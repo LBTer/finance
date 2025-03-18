@@ -8,3 +8,6 @@ wheels/
 
 # Virtual environments
 .venv
+
+# 脚本
+scripts/
