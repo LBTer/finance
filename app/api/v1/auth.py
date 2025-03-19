@@ -10,6 +10,7 @@ from app.core.security import create_access_token, get_password_hash, verify_pas
 from app.core.dependencies import AsyncSessionDep, get_current_active_superuser
 from app.models.user import User
 from app.schemas.user import UserCreate, UserResponse
+from app.utils.validators import Validators  # 确保导入验证器
 
 router = APIRouter(prefix="/auth", tags=["认证"])
 
@@ -19,18 +20,27 @@ async def login(
     form_data: Annotated[OAuth2PasswordRequestForm, Depends()]
 ) -> dict:
     """
-    用户登录
+    用户登录（使用手机号）
     """
+    # 验证手机号格式
+    try:
+        Validators.validate_phone_number(form_data.username)
+    except ValueError:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="手机号格式不正确"
+        )
+    
     # 查找用户
     result = await db.execute(
-        select(User).where(User.email == form_data.username)
+        select(User).where(User.phone == form_data.username)  # 修改这里
     )
     user = result.scalar_one_or_none()
     
     if not user or not verify_password(form_data.password, user.password_hash):
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="用户名或密码错误",
+            detail="手机号或密码错误",  # 修改错误提示
             headers={"WWW-Authenticate": "Bearer"},
         )
     
@@ -62,18 +72,39 @@ async def register(
     """
     注册新用户（仅超级管理员可用）
     """
-    # 检查邮箱是否已存在
+    # 验证手机号格式
+    try:
+        Validators.validate_phone_number(user_in.phone)  # 添加手机号验证
+    except ValueError:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="手机号格式不正确"
+        )
+    
+    # 检查手机号是否已存在
     result = await db.execute(
-        select(User).where(User.email == user_in.email)
+        select(User).where(User.phone == user_in.phone)  # 修改这里
     )
     if result.scalar_one_or_none():
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="该邮箱已被注册"
+            detail="该手机号已被注册"
         )
+    
+    # 如果提供了邮箱，检查邮箱是否已存在
+    if user_in.email:
+        result = await db.execute(
+            select(User).where(User.email == user_in.email)
+        )
+        if result.scalar_one_or_none():
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="该邮箱已被注册"
+            )
     
     # 创建新用户
     user = User(
+        phone=user_in.phone,  # 添加手机号
         email=user_in.email,
         password_hash=get_password_hash(user_in.password),
         full_name=user_in.full_name,
@@ -90,16 +121,25 @@ async def register(
 @router.post("/reset-password")
 async def reset_password(
     db: AsyncSessionDep,
-    email: str,
+    phone: str,  # 修改为手机号
     new_password: str,
     current_user: Annotated[User, Depends(get_current_active_superuser)]
 ) -> dict:
     """
     重置用户密码（仅超级管理员可用）
     """
+    # 验证手机号格式
+    try:
+        Validators.validate_phone_number(phone)
+    except ValueError:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="手机号格式不正确"
+        )
+    
     # 查找用户
     result = await db.execute(
-        select(User).where(User.email == email)
+        select(User).where(User.phone == phone)  # 修改这里
     )
     user = result.scalar_one_or_none()
     

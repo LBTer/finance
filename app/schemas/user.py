@@ -13,11 +13,18 @@ class UserBase(BaseSchema):
 
 class UserCreate(UserBase):
     """用户创建Schema"""
+    phone: str
+    email: str | None = None
     password: str = Field(..., min_length=8, max_length=100)
+    full_name: str = Field(..., min_length=2, max_length=255)
+    role: UserRole = UserRole.NORMAL
+    is_active: bool = True
+    is_superuser: bool = False
     
     class Config:
         json_schema_extra = {
             "example": {
+                "phone": "12345678901",
                 "email": "user@example.com",
                 "password": "strongpassword123",
                 "full_name": "张三",
@@ -47,4 +54,11 @@ class UserInDB(UserInDBBase):
 
 class UserResponse(UserInDBBase):
     """用户响应Schema"""
-    pass 
+    phone: str
+    email: str | None
+    full_name: str
+    role: UserRole
+    is_active: bool
+    
+    class Config:
+        from_attributes = True 

@@ -1,5 +1,5 @@
 from typing import Optional
-from pydantic import BaseSettings, EmailStr, validator
+from pydantic import BaseSettings, EmailStr, field_validator
 
 
 class Settings(BaseSettings):
@@ -16,7 +16,7 @@ class Settings(BaseSettings):
     # JWT配置
     JWT_SECRET_KEY: str
     JWT_ALGORITHM: str = "HS256"
-    ACCESS_TOKEN_EXPIRE_MINUTES: int = 30
+    ACCESS_TOKEN_EXPIRE_MINUTES: int = 60
     
     # 邮件配置
     MAIL_USERNAME: str
@@ -31,7 +31,7 @@ class Settings(BaseSettings):
     FIRST_SUPERUSER_EMAIL: EmailStr
     FIRST_SUPERUSER_PASSWORD: str
     
-    @validator("DATABASE_URL", pre=True)
+    @field_validator("DATABASE_URL", pre=True)
     def validate_database_url(cls, v: Optional[str]) -> str:
         if not v:
             raise ValueError("数据库URL不能为空")

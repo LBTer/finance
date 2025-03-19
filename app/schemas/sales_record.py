@@ -1,6 +1,6 @@
 from typing import Optional
 from datetime import datetime
-from pydantic import Field, validator
+from pydantic import Field, field_validator
 from app.models.sales_record import SalesStatus
 from .base import BaseSchema, TimestampSchema
 from .user import UserResponse
@@ -16,7 +16,7 @@ class SalesRecordBase(BaseSchema):
     tax_refund: float = Field(default=0.0, ge=0)
     remarks: Optional[str] = Field(None, max_length=1000)
 
-    @validator("unit_price", "shipping_fee", "refund_amount", "tax_refund")
+    @field_validator("unit_price", "shipping_fee", "refund_amount", "tax_refund")
     def validate_amount(cls, v: float) -> float:
         """验证金额，保留两位小数"""
         return round(v, 2)
@@ -46,7 +46,7 @@ class SalesRecordUpdate(BaseSchema):
     remarks: Optional[str] = Field(None, max_length=1000)
     status: Optional[SalesStatus] = None
 
-    @validator("unit_price", "shipping_fee", "refund_amount", "tax_refund")
+    @field_validator("unit_price", "shipping_fee", "refund_amount", "tax_refund")
     def validate_amount(cls, v: Optional[float]) -> Optional[float]:
         """验证金额，保留两位小数"""
         if v is not None:
