@@ -1,5 +1,6 @@
 from typing import Optional
-from pydantic import BaseSettings, EmailStr, field_validator
+from pydantic_settings import BaseSettings
+from pydantic import EmailStr, field_validator, computed_field
 
 
 class Settings(BaseSettings):
@@ -31,11 +32,17 @@ class Settings(BaseSettings):
     FIRST_SUPERUSER_EMAIL: EmailStr
     FIRST_SUPERUSER_PASSWORD: str
     
-    @field_validator("DATABASE_URL", pre=True)
-    def validate_database_url(cls, v: Optional[str]) -> str:
-        if not v:
-            raise ValueError("数据库URL不能为空")
-        return v
+    @field_validator("DATABASE_URL")
+    def assemble_db_url(cls, v: str | None, info) -> str:
+        if isinstance(v, str):
+            return v
+            
+        # 如果没有提供 DATABASE_URL，则从其他设置构建
+        return f"postgresql://{info.data.get('POSTGRES_USER')}:{info.data.get('POSTGRES_PASSWORD')}@{info.data.get('POSTGRES_SERVER')}:{info.data.get('POSTGRES_PORT')}/{info.data.get('POSTGRES_DB')}"
+
+    @computed_field
+    def SQLALCHEMY_DATABASE_URI(self) -> str:
+        return self.DATABASE_URL
     
     class Config:
         env_file = ".env"
