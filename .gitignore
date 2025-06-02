@@ -9,3 +9,9 @@ wheels/
 
 # Virtual environments
 .venv
+
+# Logs
+logs/
+
+# mac
+.DS_Store

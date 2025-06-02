@@ -4,6 +4,7 @@ let pageSize = 10;
 let totalItems = 0;
 let currentStatusFilter = '';
 let currentSearchQuery = '';
+let currentCategoryFilter = '';
 let currentUser = null;
 
 // 初始化销售记录页面
@@ -95,6 +96,10 @@ async function loadSalesRecords() {
       queryParams.append('search', currentSearchQuery);
     }
     
+    if (currentCategoryFilter) {
+      queryParams.append('category', currentCategoryFilter);
+    }
+    
     const records = await apiRequest(`/sales?${queryParams.toString()}`, { method: 'GET' });
     if (!records) return;
     
@@ -120,7 +125,7 @@ function renderSalesTable(sales) {
   
   if (!sales || sales.length === 0) {
     const row = document.createElement('tr');
-    row.innerHTML = `<td colspan="10" class="text-center">暂无数据</td>`;
+    row.innerHTML = `<td colspan="13" class="text-center">暂无数据</td>`;
     tableBody.appendChild(row);
     return;
   }
@@ -156,10 +161,10 @@ function renderSalesTable(sales) {
     // 控制操作按钮显示 - 根据权限决定是否可以修改或删除
     // - 超级管理员可以修改和删除所有记录
     // - 高级用户可以修改和删除自己的记录和普通用户的记录
-    // - 普通用户只能修改和删除自己的记录
-    const canModify = currentUser.role === 'admin' || 
+    // - 普通用户只能修改和删除自己的待审核记录（不能修改已审核的记录）
+    const canModify = (currentUser.role === 'admin') || 
                      (currentUser.role === 'senior' && (sale.user_id === currentUser.id || sale.user.role === 'normal')) ||
-                     (currentUser.role === 'normal' && sale.user_id === currentUser.id);
+                     (currentUser.role === 'normal' && sale.user_id === currentUser.id && sale.status === 'pending');
     
     // 控制审核按钮显示 - 只有高级用户和管理员可以审核
     const canApprove = currentUser.role !== 'normal' && sale.status === 'pending';
@@ -180,29 +185,34 @@ function renderSalesTable(sales) {
     row.innerHTML = `
       <td>${sale.order_number}</td>
       <td>${sale.product_name}</td>
+      <td>${sale.category || '-'}</td>
       <td>${sale.quantity}</td>
-      <td>${sale.unit_price.toFixed(2)}</td>
-      <td>${sale.total_amount.toFixed(2)}</td>
-      <td>${sale.user ? sale.user.full_name : '-'}</td>
+      <td>$${sale.unit_price.toFixed(2)}</td>
+      <td>$${sale.total_price ? sale.total_price.toFixed(2) : '0.00'}</td>
+      <td>${sale.logistics_company || '-'}</td>
+      <td>$${sale.profit ? sale.profit.toFixed(2) : '0.00'}</td>
       <td><span class="${statusClass}">${statusText}</span></td>
-      <td>${formatDateTime(sale.created_at)}</td>
-      <td>${sale.created_by ? sale.created_by.full_name : '-'}</td>
-      <td>${sale.approved_at ? formatDateTime(sale.approved_at) : '-'}</td>
+      <td>${sale.user ? sale.user.full_name : '-'}</td>
       <td>${sale.approved_by ? sale.approved_by.full_name : '-'}</td>
+      <td>${formatDateTime(sale.created_at)}</td>
       <td>
-        <button class="btn btn-sm btn-info table-action-btn" onclick="showSalesDetails('${sale.order_number}')">
+        <button class="btn btn-sm btn-info table-action-btn" onclick="showSalesDetails('${sale.id}')">
           <i class="bi bi-eye"></i> 查看
         </button>
         ${canModify ? `
-          <button class="btn btn-sm btn-primary table-action-btn" onclick="showEditModal('${sale.order_number}')">
+          <button class="btn btn-sm btn-primary table-action-btn" onclick="showEditModal('${sale.id}')">
             <i class="bi bi-pencil"></i> 修改
           </button>
-          <button class="btn btn-sm btn-danger table-action-btn" onclick="showDeleteModal('${sale.order_number}')">
+          <button class="btn btn-sm btn-danger table-action-btn" onclick="showDeleteModal('${sale.id}')">
             <i class="bi bi-trash"></i> 删除
           </button>
+        ` : (currentUser.role === 'normal' && sale.user_id === currentUser.id && sale.status !== 'pending') ? `
+          <span class="text-muted small">
+            <i class="bi bi-lock"></i> 已审核，不可修改
+          </span>
         ` : ''}
         ${canApprove ? `
-          <button class="btn btn-sm btn-success table-action-btn" onclick="showApproveModal('${sale.order_number}')">
+          <button class="btn btn-sm btn-success table-action-btn" onclick="showApproveModal('${sale.id}')">
             <i class="bi bi-check-circle"></i> 审核
           </button>
         ` : ''}
@@ -296,6 +306,7 @@ function handleNextPage(e) {
 function handleFilterSubmit(e) {
   e.preventDefault();
   currentSearchQuery = document.getElementById('search-input').value.trim();
+  currentCategoryFilter = document.getElementById('category-filter').value.trim();
   currentPage = 1; // 重置为第一页
   loadSalesRecords();
 }
@@ -326,6 +337,12 @@ function showAddSalesModal() {
   const recordIdInput = document.getElementById('record-id');
   if (recordIdInput) {
     recordIdInput.value = '';
+  }
+  
+  // 重新启用订单编号字段（新增时允许输入）
+  const orderNumberInput = document.getElementById('order-number');
+  if (orderNumberInput) {
+    orderNumberInput.disabled = false;
   }
   
   // 显示模态框
@@ -362,11 +379,16 @@ async function showEditSalesModal(id) {
     // 填充表单数据
     document.getElementById('order-number').value = record.order_number;
     document.getElementById('product-name').value = record.product_name;
+    document.getElementById('category').value = record.category || '';
     document.getElementById('quantity').value = record.quantity;
     document.getElementById('unit-price').value = record.unit_price;
-    document.getElementById('shipping-fee').value = record.shipping_fee;
-    document.getElementById('refund-amount').value = record.refund_amount;
-    document.getElementById('tax-refund').value = record.tax_refund;
+    document.getElementById('total-price').value = record.total_price;
+    document.getElementById('domestic-shipping-fee').value = record.domestic_shipping_fee || 0;
+    document.getElementById('overseas-shipping-fee').value = record.overseas_shipping_fee || 0;
+    document.getElementById('logistics-company').value = record.logistics_company || '';
+    document.getElementById('refund-amount').value = record.refund_amount || 0;
+    document.getElementById('tax-refund').value = record.tax_refund || 0;
+    document.getElementById('profit').value = record.profit || 0;
     document.getElementById('remarks').value = record.remarks || '';
     
     // 禁用订单编号字段（不允许修改）
@@ -397,14 +419,17 @@ async function handleSaveSales() {
   const formData = {
     order_number: document.getElementById('order-number').value.trim(),
     product_name: document.getElementById('product-name').value.trim(),
+    category: document.getElementById('category').value.trim() || null,
     quantity: parseInt(document.getElementById('quantity').value),
     unit_price: parseFloat(document.getElementById('unit-price').value),
-    shipping_fee: parseFloat(document.getElementById('shipping-fee').value) || 0,
+    total_price: parseFloat(document.getElementById('total-price').value),
+    domestic_shipping_fee: parseFloat(document.getElementById('domestic-shipping-fee').value) || 0,
+    overseas_shipping_fee: parseFloat(document.getElementById('overseas-shipping-fee').value) || 0,
+    logistics_company: document.getElementById('logistics-company').value.trim() || null,
     refund_amount: parseFloat(document.getElementById('refund-amount').value) || 0,
     tax_refund: parseFloat(document.getElementById('tax-refund').value) || 0,
-    remarks: document.getElementById('remarks').value.trim() || null,
-    // 创建人默认为当前用户
-    created_by_id: currentUser.id
+    profit: parseFloat(document.getElementById('profit').value) || 0,
+    remarks: document.getElementById('remarks').value.trim() || null
   };
   
   try {
@@ -507,15 +532,20 @@ async function showSalesDetails(id, showApproveButtons = false) {
     // 填充详情
     document.getElementById('detail-order-number').textContent = record.order_number;
     document.getElementById('detail-product-name').textContent = record.product_name;
+    document.getElementById('detail-category').textContent = record.category || '-';
     document.getElementById('detail-quantity').textContent = record.quantity;
     document.getElementById('detail-unit-price').textContent = parseFloat(record.unit_price).toFixed(2);
-    document.getElementById('detail-shipping-fee').textContent = parseFloat(record.shipping_fee).toFixed(2);
-    document.getElementById('detail-refund-amount').textContent = parseFloat(record.refund_amount).toFixed(2);
-    document.getElementById('detail-tax-refund').textContent = parseFloat(record.tax_refund).toFixed(2);
-    document.getElementById('detail-total-amount').textContent = parseFloat(record.total_amount).toFixed(2);
+    document.getElementById('detail-total-price').textContent = parseFloat(record.total_price || 0).toFixed(2);
+    document.getElementById('detail-domestic-shipping-fee').textContent = parseFloat(record.domestic_shipping_fee || 0).toFixed(2);
+    document.getElementById('detail-overseas-shipping-fee').textContent = parseFloat(record.overseas_shipping_fee || 0).toFixed(2);
+    document.getElementById('detail-logistics-company').textContent = record.logistics_company || '-';
+    document.getElementById('detail-refund-amount').textContent = parseFloat(record.refund_amount || 0).toFixed(2);
+    document.getElementById('detail-tax-refund').textContent = parseFloat(record.tax_refund || 0).toFixed(2);
+    document.getElementById('detail-profit').textContent = parseFloat(record.profit || 0).toFixed(2);
+    document.getElementById('detail-total-amount').textContent = parseFloat(record.total_amount || 0).toFixed(2);
     document.getElementById('detail-creator').textContent = record.user ? record.user.full_name : '-';
     document.getElementById('detail-created-at').textContent = formatDateTime(record.created_at);
-    document.getElementById('detail-created-by').textContent = record.created_by ? record.created_by.full_name : '-';
+    document.getElementById('detail-created-by').textContent = record.user ? record.user.full_name : '-';
     document.getElementById('detail-approver').textContent = record.approved_by ? record.approved_by.full_name : '-';
     document.getElementById('detail-approved-at').textContent = record.approved_at ? formatDateTime(record.approved_at) : '-';
     document.getElementById('detail-remarks').textContent = record.remarks || '-';
@@ -575,10 +605,8 @@ async function handleUpdateStatus(status) {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ 
-        status,
-        // 添加审核人信息
-        approved_by_id: currentUser.id,
-        approved_at: new Date().toISOString()
+        status
+        // 移除手动设置的审核字段，让后端自动处理
       })
     });
     

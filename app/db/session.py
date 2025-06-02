@@ -1,3 +1,6 @@
+"""
+此文件用于创建数据库会话，并提供一个全局单例实例
+"""
 import logging
 from typing import AsyncGenerator
 from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession, async_sessionmaker

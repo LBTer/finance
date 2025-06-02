@@ -36,12 +36,14 @@ async def get_dashboard_stats(
         next_month = datetime(now.year, now.month + 1, 1, tzinfo=timezone.utc)
     last_day = next_month - timedelta(seconds=1)
     
-    # 查询当月销售总额
+    # 查询当月销售总额（使用新的字段结构）
     total_sales_query = select(
         func.sum(
-            (SalesRecord.unit_price * SalesRecord.quantity) + 
-            SalesRecord.shipping_fee - 
-            SalesRecord.refund_amount
+            SalesRecord.total_price + 
+            SalesRecord.domestic_shipping_fee + 
+            SalesRecord.overseas_shipping_fee - 
+            SalesRecord.refund_amount - 
+            SalesRecord.tax_refund
         ).label("total_sales")
     ).where(
         SalesRecord.created_at.between(first_day, last_day),

@@ -3,10 +3,27 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from fastapi.responses import HTMLResponse, RedirectResponse
+import os
+
 from app.core.config import settings
 from app.core.init_db import init_superuser
 from app.db.session import db
 from app.api.v1 import api_router
+from app.utils.logger import init_logger, get_logger
+
+# 初始化日志系统
+log_level = os.getenv("LOG_LEVEL", "INFO")
+log_dir = os.getenv("LOG_DIR", "logs")
+init_logger(
+    log_level=log_level,
+    log_dir=log_dir,
+    app_name="finance_system",
+    enable_console=True,
+    enable_file=True
+)
+
+# 获取logger实例
+logger = get_logger(__name__)
 
 app = FastAPI(
     title=settings.APP_NAME,
@@ -33,11 +50,27 @@ async def startup_event():
     """
     应用启动时执行的操作
     """
+    logger.info("开始初始化应用...")
+    
     async with db.session() as session:
         try:
+            logger.info("初始化超级用户...")
             await init_superuser(session)
+            logger.info("超级用户初始化完成")
+        except Exception as e:
+            logger.error(f"初始化超级用户失败: {str(e)}", exc_info=True)
+            raise
         finally:
             await session.close()
+    
+    logger.info("应用初始化完成")
+
+@app.on_event("shutdown")
+async def shutdown_event():
+    """
+    应用关闭时执行的操作
+    """
+    logger.info("应用正在关闭...")
 
 # 添加API路由
 app.include_router(api_router, prefix=settings.API_V1_PREFIX)
@@ -66,3 +99,4 @@ async def sales_page(request: Request):
 @app.get("/users", response_class=HTMLResponse)
 async def users_page(request: Request):
     return templates.TemplateResponse("users.html", {"request": request}) 
+

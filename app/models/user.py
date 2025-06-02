@@ -40,4 +40,6 @@ class User(Base):
     )
     
     def __repr__(self) -> str:
-        return f"<User {self.email}>" 
+        # 完全避免访问任何可能触发数据库查询的SQLAlchemy属性
+        # 使用对象的内存地址来提供唯一标识
+        return f"<User at {hex(id(self))}>" 

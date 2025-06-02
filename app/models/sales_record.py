@@ -12,7 +12,7 @@ class SalesStatus(str, enum.Enum):
     REJECTED = "rejected"    # 已拒绝
 
 class SalesRecord(Base):
-    """销售记录模型"""
+    """销售记录模型 - 美金订单"""
     
     id: Mapped[int] = mapped_column(primary_key=True, index=True)
     order_number: Mapped[str] = mapped_column(
@@ -31,14 +31,31 @@ class SalesRecord(Base):
     )
     
     # 销售信息
+    # 产品名称
     product_name: Mapped[str] = mapped_column(String(255), nullable=False)
+    # 类别
+    category: Mapped[str] = mapped_column(String(100), nullable=True)
+    # 数量
     quantity: Mapped[int] = mapped_column(Integer, nullable=False)
+    # 单价
     unit_price: Mapped[float] = mapped_column(Float(precision=2), nullable=False)
+    # 总价
+    total_price: Mapped[float] = mapped_column(Float(precision=2), nullable=False)
+    
     
     # 费用信息
-    shipping_fee: Mapped[float] = mapped_column(Float(precision=2), default=0.0)
+    # 运费（陆内）
+    domestic_shipping_fee: Mapped[float] = mapped_column(Float(precision=2), default=0.0)
+    # 运费（海运）
+    overseas_shipping_fee: Mapped[float] = mapped_column(Float(precision=2), default=0.0)
+    # 物流公司
+    logistics_company: Mapped[Optional[str]] = mapped_column(String(100))
+    # 退款金额
     refund_amount: Mapped[float] = mapped_column(Float(precision=2), default=0.0)
+    # 退税金额
     tax_refund: Mapped[float] = mapped_column(Float(precision=2), default=0.0)
+    # 利润
+    profit: Mapped[float] = mapped_column(Float(precision=2), default=0.0)
     
     # 状态
     status: Mapped[SalesStatus] = mapped_column(
@@ -51,7 +68,7 @@ class SalesRecord(Base):
     remarks: Mapped[Optional[str]] = mapped_column(String(1000))
     
     # 审核信息
-    approved_at: Mapped[Optional[datetime]] = mapped_column(DateTime)
+    approved_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
     approved_by_id: Mapped[Optional[int]] = mapped_column(ForeignKey("user.id"))
     approved_by: Mapped[Optional["User"]] = relationship(
         "User",
@@ -63,7 +80,9 @@ class SalesRecord(Base):
     @property
     def total_amount(self) -> float:
         """计算总金额"""
-        return self.quantity * self.unit_price + self.shipping_fee - self.refund_amount - self.tax_refund
+        return self.total_price + self.domestic_shipping_fee + self.overseas_shipping_fee - self.refund_amount - self.tax_refund
     
     def __repr__(self) -> str:
-        return f"<SalesRecord {self.order_number}>" 
+        # 完全避免访问任何可能触发数据库查询的SQLAlchemy属性
+        # 使用对象的内存地址来提供唯一标识
+        return f"<SalesRecord at {hex(id(self))}>" 

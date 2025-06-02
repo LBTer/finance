@@ -1,3 +1,6 @@
+"""
+查看用户信息，包括当前用户信息、所有用户信息、指定用户信息
+"""
 from typing import Annotated, List
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy import select

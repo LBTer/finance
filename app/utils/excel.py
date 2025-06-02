@@ -32,11 +32,17 @@ class ExcelExporter:
                 data.append({
                     "订单编号": record.order_number,
                     "产品名称": record.product_name,
+                    "类别": record.category,
                     "数量": record.quantity,
-                    "单价": record.unit_price,
-                    "运费": record.shipping_fee,
-                    "退款金额": record.refund_amount,
-                    "退税金额": record.tax_refund,
+                    "单价(USD)": record.unit_price,
+                    "总价(USD)": record.total_price,
+                    "运费-陆内(USD)": record.domestic_shipping_fee,
+                    "运费-海运(USD)": record.overseas_shipping_fee,
+                    "物流公司": record.logistics_company,
+                    "退款金额(USD)": record.refund_amount,
+                    "退税金额(USD)": record.tax_refund,
+                    "利润(USD)": record.profit,
+                    "实际总金额(USD)": record.total_amount,
                     "状态": record.status,
                     "创建时间": record.created_at,
                     "更新时间": record.updated_at,
@@ -48,7 +54,7 @@ class ExcelExporter:
             
             # 生成文件名
             timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-            filename = f"sales_records_{timestamp}.xlsx"
+            filename = f"sales_records_usd_{timestamp}.xlsx"
             filepath = str(Path(output_dir) / filename)
             
             # 导出到Excel

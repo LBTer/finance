@@ -1,3 +1,6 @@
+"""
+用户登陆相关接口，包括登录、注册、重置密码
+"""
 from datetime import timedelta
 from typing import Annotated
 from fastapi import APIRouter, Depends, HTTPException, status
@@ -76,17 +79,17 @@ async def register(
     - 普通用户不能创建用户
     """
     # 权限检查
-    if current_user.role == UserRole.normal:
+    if current_user.role == UserRole.NORMAL:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="普通用户不能创建新用户"
         )
-    if current_user.role == UserRole.senior and user_in.role != UserRole.normal:
+    if current_user.role == UserRole.SENIOR and user_in.role != UserRole.NORMAL:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="高级用户只能创建普通用户"
         )
-    if user_in.role == UserRole.admin:
+    if user_in.role == UserRole.ADMIN:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="不能通过接口创建超级管理员"
@@ -172,12 +175,12 @@ async def reset_password(
         )
     
     # 权限检查
-    if current_user.role == UserRole.normal and user.id != current_user.id:
+    if current_user.role == UserRole.NORMAL and user.id != current_user.id:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="您只能重置自己的密码"
         )
-    if current_user.role == UserRole.senior and user.id != current_user.id and user.role != UserRole.normal:
+    if current_user.role == UserRole.SENIOR and user.id != current_user.id and user.role != UserRole.NORMAL:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="您只能重置普通用户的密码"
