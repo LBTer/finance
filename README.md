@@ -12,6 +12,14 @@ alembic init migrations
 alembic revision --autogenerate -m "Initial migration"
 // 3. 应用迁移
 alembic upgrade head
+// 4. 撤回迁移
+
 ```
 
 # 启动服务
+```
+// 环境激活
+source .venv/bin/activate
+// 后端
+uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
+```

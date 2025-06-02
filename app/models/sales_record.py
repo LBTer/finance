@@ -24,7 +24,11 @@ class SalesRecord(Base):
     
     # 外键关联
     user_id: Mapped[int] = mapped_column(ForeignKey("user.id"), nullable=False)
-    user: Mapped["User"] = relationship("User", back_populates="sales_records")
+    user: Mapped["User"] = relationship(
+        "User", 
+        back_populates="sales_records",
+        foreign_keys=[user_id]
+    )
     
     # 销售信息
     product_name: Mapped[str] = mapped_column(String(255), nullable=False)
@@ -52,7 +56,8 @@ class SalesRecord(Base):
     approved_by: Mapped[Optional["User"]] = relationship(
         "User",
         foreign_keys=[approved_by_id],
-        remote_side="User.id"
+        remote_side="User.id",
+        backref="approved_sales"
     )
     
     @property

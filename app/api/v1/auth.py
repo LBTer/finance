@@ -7,10 +7,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
 from app.core.security import create_access_token, get_password_hash, verify_password
-from app.core.dependencies import AsyncSessionDep, get_current_active_superuser
-from app.models.user import User
-from app.schemas.user import UserCreate, UserResponse
-from app.utils.validators import Validators  # 确保导入验证器
+from app.core.dependencies import AsyncSessionDep, get_current_active_superuser, get_current_active_senior_or_admin
+from app.models.user import User, UserRole
+from app.schemas.user import UserCreate, UserResponse, PasswordReset
+from app.utils.validators import Validators
 
 router = APIRouter(prefix="/auth", tags=["认证"])
 
@@ -33,14 +33,14 @@ async def login(
     
     # 查找用户
     result = await db.execute(
-        select(User).where(User.phone == form_data.username)  # 修改这里
+        select(User).where(User.phone == form_data.username)
     )
     user = result.scalar_one_or_none()
     
     if not user or not verify_password(form_data.password, user.password_hash):
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="手机号或密码错误",  # 修改错误提示
+            detail="手机号或密码错误",
             headers={"WWW-Authenticate": "Bearer"},
         )
     
@@ -67,14 +67,34 @@ async def register(
     *,
     db: AsyncSessionDep,
     user_in: UserCreate,
-    current_user: Annotated[User, Depends(get_current_active_superuser)]
+    current_user: Annotated[User, Depends(get_current_active_senior_or_admin)]
 ) -> User:
     """
-    注册新用户（仅超级管理员可用）
+    注册新用户
+    - 超级管理员可以创建高级用户和普通用户
+    - 高级用户只能创建普通用户
+    - 普通用户不能创建用户
     """
+    # 权限检查
+    if current_user.role == UserRole.normal:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="普通用户不能创建新用户"
+        )
+    if current_user.role == UserRole.senior and user_in.role != UserRole.normal:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="高级用户只能创建普通用户"
+        )
+    if user_in.role == UserRole.admin:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="不能通过接口创建超级管理员"
+        )
+    
     # 验证手机号格式
     try:
-        Validators.validate_phone_number(user_in.phone)  # 添加手机号验证
+        Validators.validate_phone_number(user_in.phone)
     except ValueError:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -83,7 +103,7 @@ async def register(
     
     # 检查手机号是否已存在
     result = await db.execute(
-        select(User).where(User.phone == user_in.phone)  # 修改这里
+        select(User).where(User.phone == user_in.phone)
     )
     if result.scalar_one_or_none():
         raise HTTPException(
@@ -104,13 +124,13 @@ async def register(
     
     # 创建新用户
     user = User(
-        phone=user_in.phone,  # 添加手机号
+        phone=user_in.phone,
         email=user_in.email,
         password_hash=get_password_hash(user_in.password),
         full_name=user_in.full_name,
         role=user_in.role,
         is_active=user_in.is_active,
-        is_superuser=user_in.is_superuser
+        is_superuser=False  # 确保通过接口创建的用户不是超级用户
     )
     db.add(user)
     await db.commit()
@@ -121,16 +141,18 @@ async def register(
 @router.post("/reset-password")
 async def reset_password(
     db: AsyncSessionDep,
-    phone: str,  # 修改为手机号
-    new_password: str,
-    current_user: Annotated[User, Depends(get_current_active_superuser)]
+    reset_data: PasswordReset,
+    current_user: Annotated[User, Depends(get_current_active_senior_or_admin)]
 ) -> dict:
     """
-    重置用户密码（仅超级管理员可用）
+    重置用户密码
+    - 超级管理员可以重置所有人的密码
+    - 高级用户可以重置自己和普通用户的密码
+    - 普通用户只能重置自己的密码
     """
     # 验证手机号格式
     try:
-        Validators.validate_phone_number(phone)
+        Validators.validate_phone_number(reset_data.phone)
     except ValueError:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -139,7 +161,7 @@ async def reset_password(
     
     # 查找用户
     result = await db.execute(
-        select(User).where(User.phone == phone)  # 修改这里
+        select(User).where(User.phone == reset_data.phone)
     )
     user = result.scalar_one_or_none()
     
@@ -149,8 +171,20 @@ async def reset_password(
             detail="用户不存在"
         )
     
+    # 权限检查
+    if current_user.role == UserRole.normal and user.id != current_user.id:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="您只能重置自己的密码"
+        )
+    if current_user.role == UserRole.senior and user.id != current_user.id and user.role != UserRole.normal:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="您只能重置普通用户的密码"
+        )
+    
     # 更新密码
-    user.password_hash = get_password_hash(new_password)
+    user.password_hash = get_password_hash(reset_data.new_password)
     await db.commit()
     
     return {"message": "密码重置成功"} 

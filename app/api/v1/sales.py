@@ -141,8 +141,12 @@ async def update_sales_record(
             detail="记录不存在"
         )
     
+    # 确保在此处已加载完所有必要属性
+    _ = record.order_number  # 预先加载order_number属性，避免后续延迟加载
+    
     # 更新记录
-    for field, value in record_in.model_dump(exclude_unset=True).items():
+    update_data = record_in.model_dump(exclude_unset=True)
+    for field, value in update_data.items():
         setattr(record, field, value)
     
     # 如果是审核操作
@@ -152,9 +156,16 @@ async def update_sales_record(
         record.approved_by_id = current_user.id
         record.approved_at = datetime.now(UTC)
     
-    await db.commit()
-    await db.refresh(record)
-    return record
+    try:
+        await db.commit()
+        await db.refresh(record)
+        return record
+    except Exception as e:
+        await db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"更新记录失败: {str(e)}"
+        )
 
 @router.delete("/{record_id}")
 @check_sales_record_permissions(Action.DELETE, get_sales_record)
@@ -177,7 +188,16 @@ async def delete_sales_record(
             detail="记录不存在"
         )
     
-    await db.delete(record)
-    await db.commit()
+    # 确保加载所有属性，避免懒加载问题
+    _ = record.order_number
     
-    return {"message": "记录已删除"} 
+    try:
+        await db.delete(record)
+        await db.commit()
+        return {"message": "记录已删除"}
+    except Exception as e:
+        await db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"删除记录失败: {str(e)}"
+        ) 

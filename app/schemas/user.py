@@ -61,4 +61,17 @@ class UserResponse(UserInDBBase):
     is_active: bool
     
     class Config:
-        from_attributes = True 
+        from_attributes = True
+
+class PasswordReset(BaseSchema):
+    """重置密码请求体"""
+    phone: str
+    new_password: str = Field(..., min_length=8, max_length=100)
+
+    class Config:
+        json_schema_extra = {
+            "example": {
+                "phone": "12345678901",
+                "new_password": "newpassword123"
+            }
+        } 

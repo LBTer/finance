@@ -1,0 +1,236 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>财务系统 - 用户管理</title>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.0/font/bootstrap-icons.css" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css?family=Nunito:200,200i,300,300i,400,400i,600,600i,700,700i,800,800i,900,900i" rel="stylesheet">
+  <link href="/static/css/main.css" rel="stylesheet">
+</head>
+<body>
+  <div class="loading-spinner">
+    <div class="spinner-border text-primary" role="status">
+      <span class="visually-hidden">加载中...</span>
+    </div>
+  </div>
+
+  <!-- 页面容器 -->
+  <div class="d-flex">
+    <!-- 侧边栏 -->
+    <div class="sidebar col-lg-2 d-flex flex-column">
+      <div class="sidebar-brand d-flex align-items-center justify-content-center text-white py-2">
+        <div class="sidebar-brand-icon me-2">
+          <i class="bi bi-currency-yen"></i>
+        </div>
+        <div class="sidebar-brand-text">财务系统</div>
+      </div>
+      
+      <hr class="sidebar-divider my-0">
+      
+      <ul class="nav flex-column">
+        <li class="nav-item">
+          <a class="nav-link" href="/dashboard">
+            <i class="bi bi-speedometer2"></i>
+            <span>仪表盘</span>
+          </a>
+        </li>
+        
+        <li class="nav-item" id="sales-menu">
+          <a class="nav-link" href="/sales">
+            <i class="bi bi-cart3"></i>
+            <span>销售记录</span>
+          </a>
+        </li>
+        
+        <!-- 只对管理员显示 -->
+        <li class="nav-item admin-only" id="users-menu">
+          <a class="nav-link active" href="/users">
+            <i class="bi bi-people"></i>
+            <span>用户管理</span>
+          </a>
+        </li>
+      </ul>
+      
+      <div class="mt-auto mb-4 text-center text-white small">
+        <span>© 2024 Finance System</span>
+      </div>
+    </div>
+    
+    <!-- 主要内容区域 -->
+    <div class="content-wrapper col-lg-10 d-flex flex-column">
+      <!-- 顶部导航栏 -->
+      <nav class="topbar navbar navbar-expand navbar-light bg-white mb-4">
+        <div class="container-fluid">
+          <button id="sidebar-toggle" class="btn btn-link d-md-none">
+            <i class="bi bi-list"></i>
+          </button>
+          
+          <div class="d-flex ms-auto">
+            <div class="dropdown">
+              <a class="nav-link dropdown-toggle" href="#" role="button" id="userDropdown" data-bs-toggle="dropdown" aria-expanded="false">
+                <span class="d-none d-lg-inline text-gray-600 small me-2" id="current-user-name">用户名</span>
+                <i class="bi bi-person-circle"></i>
+              </a>
+              <ul class="dropdown-menu dropdown-menu-end shadow" aria-labelledby="userDropdown">
+                <li>
+                  <div class="dropdown-item-text">
+                    <div class="small text-gray-500">角色</div>
+                    <span id="current-user-role">加载中...</span>
+                  </div>
+                </li>
+                <li><hr class="dropdown-divider"></li>
+                <li><a class="dropdown-item" href="#" id="logout-btn">
+                  <i class="bi bi-box-arrow-right me-2"></i>退出
+                </a></li>
+              </ul>
+            </div>
+          </div>
+        </div>
+      </nav>
+      
+      <!-- 内容区 -->
+      <div class="container-fluid">
+        <div class="d-sm-flex align-items-center justify-content-between mb-4">
+          <h1 class="h3 mb-0 text-gray-800">用户管理</h1>
+          <button class="btn btn-primary shadow-sm admin-only" id="add-user-btn">
+            <i class="bi bi-person-plus me-1"></i>
+            新增用户
+          </button>
+        </div>
+        
+        <!-- 用户列表 -->
+        <div class="card shadow mb-4">
+          <div class="card-header py-3">
+            <h6 class="m-0 font-weight-bold text-primary">用户列表</h6>
+          </div>
+          <div class="card-body">
+            <div class="table-responsive">
+              <table class="table table-bordered" id="users-table" width="100%" cellspacing="0">
+                <thead>
+                  <tr>
+                    <th>姓名</th>
+                    <th>手机号</th>
+                    <th>邮箱</th>
+                    <th>角色</th>
+                    <th>状态</th>
+                    <th>创建时间</th>
+                    <th>操作</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <!-- JavaScript 动态填充 -->
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      </div>
+      
+      <!-- 页脚 -->
+      <footer class="sticky-footer bg-white mt-auto">
+        <div class="container my-auto">
+          <div class="copyright text-center my-auto">
+            <span>Copyright © 财务管理系统 2024</span>
+          </div>
+        </div>
+      </footer>
+    </div>
+  </div>
+
+  <!-- 新增用户模态框 -->
+  <div class="modal fade" id="user-modal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h5 class="modal-title">新增用户</h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+        </div>
+        <div class="modal-body">
+          <form id="user-form" class="needs-validation" novalidate>
+            <div class="mb-3">
+              <label for="phone" class="form-label">手机号 <span class="text-danger">*</span></label>
+              <input type="text" class="form-control" id="phone" name="phone" required pattern="^1[3-9]\d{9}$">
+              <div class="invalid-feedback">请输入有效的手机号</div>
+            </div>
+            
+            <div class="mb-3">
+              <label for="email" class="form-label">邮箱</label>
+              <input type="email" class="form-control" id="email" name="email">
+              <div class="invalid-feedback">请输入有效的邮箱地址</div>
+            </div>
+            
+            <div class="mb-3">
+              <label for="full-name" class="form-label">姓名 <span class="text-danger">*</span></label>
+              <input type="text" class="form-control" id="full-name" name="full_name" required>
+              <div class="invalid-feedback">请输入姓名</div>
+            </div>
+            
+            <div class="mb-3">
+              <label for="password" class="form-label">密码 <span class="text-danger">*</span></label>
+              <input type="password" class="form-control" id="password" name="password" required minlength="8">
+              <div class="invalid-feedback">密码长度至少为8位</div>
+            </div>
+            
+            <div class="mb-3">
+              <label for="role" class="form-label">角色 <span class="text-danger">*</span></label>
+              <select class="form-select" id="role" name="role" required>
+                <option value="normal">普通用户</option>
+                <option value="senior">高级用户</option>
+                <option value="admin">超级管理员</option>
+              </select>
+            </div>
+            
+            <div class="mb-3 form-check">
+              <input type="checkbox" class="form-check-input" id="is-active" name="is_active" checked>
+              <label class="form-check-label" for="is-active">账号启用</label>
+            </div>
+          </form>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">取消</button>
+          <button type="button" class="btn btn-primary" id="save-user-btn">保存</button>
+        </div>
+      </div>
+    </div>
+  </div>
+  
+  <!-- 重置密码模态框 -->
+  <div class="modal fade" id="reset-password-modal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h5 class="modal-title">重置密码</h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+        </div>
+        <div class="modal-body">
+          <p>您正在为 <strong id="reset-user-name"></strong> 重置密码。</p>
+          <form id="reset-password-form" class="needs-validation" novalidate>
+            <input type="hidden" id="reset-phone">
+            <div class="mb-3">
+              <label for="new-password" class="form-label">新密码</label>
+              <input type="password" class="form-control" id="new-password" name="new_password" required minlength="8">
+              <div class="invalid-feedback">密码长度至少为8位</div>
+            </div>
+          </form>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">取消</button>
+          <button type="button" class="btn btn-primary" id="reset-password-btn">确认重置</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 消息提示框 -->
+  <div class="position-fixed bottom-0 end-0 p-3" style="z-index: 5">
+    <div id="toast-container"></div>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/jquery@3.6.0/dist/jquery.min.js"></script>
+  <script src="/static/js/main.js?v=1.0.1"></script>
+  <script src="/static/js/users.js?v=1.0.1"></script>
+</body>
+</html> 

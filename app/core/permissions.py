@@ -56,6 +56,9 @@ class SalesRecordPermission(BasePermission):
         if self.user.role == UserRole.NORMAL:
             if action == Action.CREATE:
                 return True
+            if action == Action.READ and obj is None:
+                # 允许普通用户查看销售记录列表
+                return True
             if obj is None:
                 return False
             if obj.user_id != self.user.id:
@@ -130,7 +133,7 @@ def check_sales_record_permissions(
     return check_permissions(SalesRecordPermission, action, get_object)
 
 # 工具函数：获取销售记录对象
-async def get_sales_record(db, record_id: int) -> Optional[SalesRecord]:
+async def get_sales_record(db, record_id: int, **kwargs) -> Optional[SalesRecord]:
     """根据ID获取销售记录"""
     from sqlalchemy import select
     result = await db.execute(

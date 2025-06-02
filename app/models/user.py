@@ -35,7 +35,8 @@ class User(Base):
     sales_records: Mapped[List["SalesRecord"]] = relationship(
         "SalesRecord",
         back_populates="user",
-        cascade="all, delete-orphan"
+        cascade="all, delete-orphan",
+        foreign_keys="SalesRecord.user_id"
     )
     
     def __repr__(self) -> str:

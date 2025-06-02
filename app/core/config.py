@@ -29,8 +29,10 @@ class Settings(BaseSettings):
     MAIL_SSL: bool = False
     
     # 超级管理员配置
-    FIRST_SUPERUSER_EMAIL: EmailStr
-    FIRST_SUPERUSER_PASSWORD: str
+    FIRST_SUPERUSER_EMAIL: str = "admin@example.com"
+    FIRST_SUPERUSER_PHONE: str = "13800138000"
+    FIRST_SUPERUSER_PASSWORD: str = "admin123"
+    FIRST_SUPERUSER_FULL_NAME: str = "System Administrator"
     
     @field_validator("DATABASE_URL")
     def assemble_db_url(cls, v: str | None, info) -> str:
@@ -38,7 +40,7 @@ class Settings(BaseSettings):
             return v
             
         # 如果没有提供 DATABASE_URL，则从其他设置构建
-        return f"postgresql://{info.data.get('POSTGRES_USER')}:{info.data.get('POSTGRES_PASSWORD')}@{info.data.get('POSTGRES_SERVER')}:{info.data.get('POSTGRES_PORT')}/{info.data.get('POSTGRES_DB')}"
+        return f"postgresql+asyncpg://{info.data.get('POSTGRES_USER')}:{info.data.get('POSTGRES_PASSWORD')}@{info.data.get('POSTGRES_SERVER')}:{info.data.get('POSTGRES_PORT')}/{info.data.get('POSTGRES_DB')}"
 
     @computed_field
     def SQLALCHEMY_DATABASE_URI(self) -> str:
