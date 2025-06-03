@@ -1,7 +1,7 @@
 [project]
 name = "finance"
 version = "0.1.0"
-description = "Add your description here"
+description = "财务管理系统 - 销售记录和用户管理"
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
