@@ -5,6 +5,44 @@
 # 应用访问： 从宿主机可以通过 localhost:38000 访问应用
 
 services:
+  # Nginx Proxy Manager - SSL 代理和证书管理
+  nginx-proxy-manager:
+    image: jc21/nginx-proxy-manager:latest
+    container_name: finance_nginx
+    ports:
+      # - "80:80"     # HTTP
+      - "443:443"   # HTTPS
+      - "81:81"     # 管理界面
+    environment:
+      - DB_MYSQL_HOST=nginx-db
+      - DB_MYSQL_PORT=3306
+      - DB_MYSQL_USER=npm
+      - DB_MYSQL_PASSWORD=npm_password
+      - DB_MYSQL_NAME=npm
+    volumes:
+      - nginx_data:/data
+      - nginx_letsencrypt:/etc/letsencrypt
+    networks:
+      - finance_network
+    depends_on:
+      - nginx-db
+    restart: unless-stopped
+
+  # Nginx Proxy Manager 数据库
+  nginx-db:
+    image: mysql:8.0
+    container_name: finance_nginx_db
+    environment:
+      - MYSQL_ROOT_PASSWORD=root_password
+      - MYSQL_DATABASE=npm
+      - MYSQL_USER=npm
+      - MYSQL_PASSWORD=npm_password
+    volumes:
+      - nginx_db_data:/var/lib/mysql
+    networks:
+      - finance_network
+    restart: unless-stopped
+
   # 数据库
   postgres:
     image: postgres:16-alpine
@@ -27,8 +65,11 @@ services:
   # 应用服务
   app:
     build: .
-    ports:
-      - "38000:8000"
+    platform: linux/amd64  # 指定架构：linux/amd64 或 linux/arm64，跨平台时注意替换
+    # ports:
+    #   - "38000:8000"  # 通过nginx代理访问，不需要直接暴露端口
+    expose:
+      - "8000"  # 仅在内部网络暴露
     environment:
       # 数据库连接配置
       DATABASE_URL: postgresql+asyncpg://anyu:zvRdM7SGj1ZewKhtCGLngY4hgkXUO5y9@postgres:5432/finance_db
@@ -71,6 +112,12 @@ services:
 volumes:
   postgres_data:
     name: finance_postgres_data
+  nginx_data:
+    name: finance_nginx_data
+  nginx_db_data:
+    name: finance_nginx_db_data
+  nginx_letsencrypt:
+    name: finance_nginx_letsencrypt
 
 networks:
   finance_network:
