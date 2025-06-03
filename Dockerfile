@@ -11,6 +11,7 @@ RUN apt-get update && apt-get install -y \
     && rm -rf /var/lib/apt/lists/*
 
 # 安装uv
+RUN pip install --upgrade pip
 RUN pip install uv
 
 # 复制项目文件
