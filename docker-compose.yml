@@ -32,6 +32,8 @@ services:
   nginx-db:
     image: mysql:5.7
     container_name: finance_nginx_db
+    expose:
+      - "3306"  # 仅在内部网络暴露
     environment:
       - MYSQL_ROOT_PASSWORD=root_password
       - MYSQL_DATABASE=npm
