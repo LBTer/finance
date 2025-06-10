@@ -37,24 +37,26 @@ class SalesRecord(Base):
     category: Mapped[str] = mapped_column(String(100), nullable=True)
     # 数量
     quantity: Mapped[int] = mapped_column(Integer, nullable=False)
-    # 单价
+    # 单价（美元）
     unit_price: Mapped[float] = mapped_column(Float(precision=2), nullable=False)
-    # 总价
+    # 总价（美元）
     total_price: Mapped[float] = mapped_column(Float(precision=2), nullable=False)
+    # 汇率（美元-人民币）
+    exchange_rate: Mapped[float] = mapped_column(Float(precision=4), nullable=False, default=7.0)
     
     
     # 费用信息
-    # 运费（陆内）
+    # 运费（陆内）- 人民币
     domestic_shipping_fee: Mapped[float] = mapped_column(Float(precision=2), default=0.0)
-    # 运费（海运）
+    # 运费（海运）- 人民币
     overseas_shipping_fee: Mapped[float] = mapped_column(Float(precision=2), default=0.0)
     # 物流公司
     logistics_company: Mapped[Optional[str]] = mapped_column(String(100))
-    # 退款金额
+    # 退款金额 - 人民币
     refund_amount: Mapped[float] = mapped_column(Float(precision=2), default=0.0)
-    # 退税金额
+    # 退税金额 - 人民币
     tax_refund: Mapped[float] = mapped_column(Float(precision=2), default=0.0)
-    # 利润
+    # 利润 - 人民币
     profit: Mapped[float] = mapped_column(Float(precision=2), default=0.0)
     
     # 状态
@@ -79,7 +81,7 @@ class SalesRecord(Base):
     
     @property
     def total_amount(self) -> float:
-        """计算总金额"""
+        """计算总金额（美元 + 人民币费用，需要根据汇率转换）"""
         return self.total_price + self.domestic_shipping_fee + self.overseas_shipping_fee - self.refund_amount - self.tax_refund
     
     def __repr__(self) -> str:

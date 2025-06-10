@@ -62,7 +62,9 @@ def test_record(db: Session, sales_user):
         product_name="Test Product",
         quantity=1,
         unit_price=100.00,
-        shipping_fee=10.00,
+        total_price=100.00,
+        domestic_shipping_fee=10.00,
+        overseas_shipping_fee=0.00,
         status="pending",
         remarks="Test record"
     )
@@ -70,6 +72,25 @@ def test_record(db: Session, sales_user):
     db.commit()
     db.refresh(record)
     return record
+
+@pytest.fixture
+def test_record():
+    return {
+        "order_number": "TEST001",
+        "product_name": "测试产品",
+        "category": "测试类别",
+        "quantity": 1,
+        "unit_price": 100.0,
+        "total_price": 100.0,
+        "exchange_rate": 7.2500,
+        "domestic_shipping_fee": 10.0,
+        "overseas_shipping_fee": 20.0,
+        "logistics_company": "测试物流",
+        "refund_amount": 0.0,
+        "tax_refund": 0.0,
+        "profit": 50.0,
+        "remarks": "测试备注"
+    }
 
 def test_admin_access_all_records(client, admin_user, test_record):
     token = create_access_token({"sub": admin_user.email, "role": "admin"})

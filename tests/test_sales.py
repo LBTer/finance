@@ -34,7 +34,9 @@ def test_sales_record(db: Session, test_user):
         product_name="Test Product",
         quantity=1,
         unit_price=100.00,
-        shipping_fee=10.00,
+        total_price=100.00,
+        domestic_shipping_fee=10.00,
+        overseas_shipping_fee=0.00,
         status="pending",
         remarks="Test record"
     )
@@ -54,7 +56,9 @@ def test_create_sales_record(client, test_user):
             "product_name": "New Product",
             "quantity": 2,
             "unit_price": 150.00,
-            "shipping_fee": 15.00,
+            "total_price": 300.00,
+            "domestic_shipping_fee": 15.00,
+            "overseas_shipping_fee": 0.00,
             "status": "pending",
             "remarks": "New test record"
         }

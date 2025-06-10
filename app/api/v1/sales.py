@@ -36,14 +36,14 @@ async def create_sales_record(
     - **product_name**: 产品名称
     - **category**: 类别（可选）
     - **quantity**: 数量
-    - **unit_price**: 单价
-    - **total_price**: 总价
-    - **domestic_shipping_fee**: 运费（陆内）
-    - **overseas_shipping_fee**: 运费（海运）
+    - **unit_price**: 单价（美元）
+    - **total_price**: 总价（美元）
+    - **domestic_shipping_fee**: 运费-陆内（人民币）
+    - **overseas_shipping_fee**: 运费-海运（人民币）
     - **logistics_company**: 物流公司（可选）
-    - **refund_amount**: 退款金额
-    - **tax_refund**: 退税金额
-    - **profit**: 利润
+    - **refund_amount**: 退款金额（人民币）
+    - **tax_refund**: 退税金额（人民币）
+    - **profit**: 利润（人民币）
     - **remarks**: 备注（可选）
     """
     logger.info(f"创建销售记录 - user_id: {current_user.id}, order_number: {record_in.order_number}")
@@ -178,14 +178,14 @@ async def update_sales_record(
     - **product_name**: 产品名称
     - **category**: 类别
     - **quantity**: 数量
-    - **unit_price**: 单价
-    - **total_price**: 总价
-    - **domestic_shipping_fee**: 运费（陆内）
-    - **overseas_shipping_fee**: 运费（海运）
+    - **unit_price**: 单价（美元）
+    - **total_price**: 总价（美元）
+    - **domestic_shipping_fee**: 运费-陆内（人民币）
+    - **overseas_shipping_fee**: 运费-海运（人民币）
     - **logistics_company**: 物流公司
-    - **refund_amount**: 退款金额
-    - **tax_refund**: 退税金额
-    - **profit**: 利润
+    - **refund_amount**: 退款金额（人民币）
+    - **tax_refund**: 退税金额（人民币）
+    - **profit**: 利润（人民币）
     - **remarks**: 备注
     - **status**: 状态 (pending/approved/rejected)
     """

@@ -48,6 +48,9 @@ async function initSalesPage() {
     saveButton.addEventListener('click', handleSaveSales);
   }
   
+  // 绑定利润计算相关字段的事件监听器
+  bindProfitCalculationEvents();
+  
   // 绑定删除确认按钮事件
   const confirmDeleteButton = document.getElementById('confirm-delete-btn');
   if (confirmDeleteButton) {
@@ -189,8 +192,9 @@ function renderSalesTable(sales) {
       <td>${sale.quantity}</td>
       <td>$${sale.unit_price.toFixed(2)}</td>
       <td>$${sale.total_price ? sale.total_price.toFixed(2) : '0.00'}</td>
+      <td>${sale.exchange_rate ? sale.exchange_rate.toFixed(4) : '7.0000'}</td>
       <td>${sale.logistics_company || '-'}</td>
-      <td>$${sale.profit ? sale.profit.toFixed(2) : '0.00'}</td>
+      <td>¥${sale.profit ? sale.profit.toFixed(2) : '0.00'}</td>
       <td><span class="${statusClass}">${statusText}</span></td>
       <td>${sale.user ? sale.user.full_name : '-'}</td>
       <td>${sale.approved_by ? sale.approved_by.full_name : '-'}</td>
@@ -345,6 +349,9 @@ function showAddSalesModal() {
     orderNumberInput.disabled = false;
   }
   
+  // 重新绑定利润计算事件并计算利润
+  bindProfitCalculationEvents();
+  
   // 显示模态框
   const modal = new bootstrap.Modal(document.getElementById('sales-modal'));
   modal.show();
@@ -383,6 +390,7 @@ async function showEditSalesModal(id) {
     document.getElementById('quantity').value = record.quantity;
     document.getElementById('unit-price').value = record.unit_price;
     document.getElementById('total-price').value = record.total_price;
+    document.getElementById('exchange-rate').value = record.exchange_rate || 7.0000;
     document.getElementById('domestic-shipping-fee').value = record.domestic_shipping_fee || 0;
     document.getElementById('overseas-shipping-fee').value = record.overseas_shipping_fee || 0;
     document.getElementById('logistics-company').value = record.logistics_company || '';
@@ -393,6 +401,9 @@ async function showEditSalesModal(id) {
     
     // 禁用订单编号字段（不允许修改）
     document.getElementById('order-number').disabled = true;
+    
+    // 重新绑定利润计算事件并计算利润
+    bindProfitCalculationEvents();
     
     // 显示模态框
     const modal = new bootstrap.Modal(document.getElementById('sales-modal'));
@@ -416,6 +427,9 @@ async function handleSaveSales() {
   const recordId = document.getElementById('record-id').value;
   const isEdit = !!recordId;
   
+  // 确保利润已经计算
+  calculateProfit();
+  
   const formData = {
     order_number: document.getElementById('order-number').value.trim(),
     product_name: document.getElementById('product-name').value.trim(),
@@ -423,6 +437,7 @@ async function handleSaveSales() {
     quantity: parseInt(document.getElementById('quantity').value),
     unit_price: parseFloat(document.getElementById('unit-price').value),
     total_price: parseFloat(document.getElementById('total-price').value),
+    exchange_rate: parseFloat(document.getElementById('exchange-rate').value) || 7.0000,
     domestic_shipping_fee: parseFloat(document.getElementById('domestic-shipping-fee').value) || 0,
     overseas_shipping_fee: parseFloat(document.getElementById('overseas-shipping-fee').value) || 0,
     logistics_company: document.getElementById('logistics-company').value.trim() || null,
@@ -536,6 +551,7 @@ async function showSalesDetails(id, showApproveButtons = false) {
     document.getElementById('detail-quantity').textContent = record.quantity;
     document.getElementById('detail-unit-price').textContent = parseFloat(record.unit_price).toFixed(2);
     document.getElementById('detail-total-price').textContent = parseFloat(record.total_price || 0).toFixed(2);
+    document.getElementById('detail-exchange-rate').textContent = parseFloat(record.exchange_rate || 7.0).toFixed(4);
     document.getElementById('detail-domestic-shipping-fee').textContent = parseFloat(record.domestic_shipping_fee || 0).toFixed(2);
     document.getElementById('detail-overseas-shipping-fee').textContent = parseFloat(record.overseas_shipping_fee || 0).toFixed(2);
     document.getElementById('detail-logistics-company').textContent = record.logistics_company || '-';
@@ -543,6 +559,22 @@ async function showSalesDetails(id, showApproveButtons = false) {
     document.getElementById('detail-tax-refund').textContent = parseFloat(record.tax_refund || 0).toFixed(2);
     document.getElementById('detail-profit').textContent = parseFloat(record.profit || 0).toFixed(2);
     document.getElementById('detail-total-amount').textContent = parseFloat(record.total_amount || 0).toFixed(2);
+    
+    // 显示利润计算过程
+    const totalPrice = parseFloat(record.total_price || 0);
+    const exchangeRate = parseFloat(record.exchange_rate || 7.0);
+    const domesticShippingFee = parseFloat(record.domestic_shipping_fee || 0);
+    const overseasShippingFee = parseFloat(record.overseas_shipping_fee || 0);
+    const refundAmount = parseFloat(record.refund_amount || 0);
+    const taxRefund = parseFloat(record.tax_refund || 0);
+    const calculatedProfit = (totalPrice * exchangeRate) - domesticShippingFee - overseasShippingFee - refundAmount + taxRefund;
+    
+    const detailProfitCalculation = document.getElementById('detail-profit-calculation');
+    if (detailProfitCalculation) {
+      detailProfitCalculation.textContent = 
+        `计算过程：${totalPrice.toFixed(2)} × ${exchangeRate.toFixed(4)} - ${domesticShippingFee.toFixed(2)} - ${overseasShippingFee.toFixed(2)} - ${refundAmount.toFixed(2)} + ${taxRefund.toFixed(2)} = ¥${calculatedProfit.toFixed(2)}`;
+    }
+    
     document.getElementById('detail-creator').textContent = record.user ? record.user.full_name : '-';
     document.getElementById('detail-created-at').textContent = formatDateTime(record.created_at);
     document.getElementById('detail-created-by').textContent = record.user ? record.user.full_name : '-';
@@ -659,4 +691,53 @@ document.addEventListener('DOMContentLoaded', initSalesPage);
 window.showEditModal = showEditModal;
 window.showDeleteModal = showDeleteModal;
 window.showSalesDetails = showSalesDetails;
-window.showApproveModal = showApproveModal; 
+window.showApproveModal = showApproveModal;
+
+// 绑定利润计算相关字段的事件监听器
+function bindProfitCalculationEvents() {
+  const fieldsToWatch = [
+    'total-price',
+    'exchange-rate', 
+    'domestic-shipping-fee',
+    'overseas-shipping-fee',
+    'refund-amount',
+    'tax-refund'
+  ];
+  
+  fieldsToWatch.forEach(fieldId => {
+    const field = document.getElementById(fieldId);
+    if (field) {
+      field.addEventListener('input', calculateProfit);
+      field.addEventListener('change', calculateProfit);
+    }
+  });
+  
+  // 初始计算一次
+  calculateProfit();
+}
+
+// 计算利润
+function calculateProfit() {
+  const totalPrice = parseFloat(document.getElementById('total-price')?.value) || 0;
+  const exchangeRate = parseFloat(document.getElementById('exchange-rate')?.value) || 7.0;
+  const domesticShippingFee = parseFloat(document.getElementById('domestic-shipping-fee')?.value) || 0;
+  const overseasShippingFee = parseFloat(document.getElementById('overseas-shipping-fee')?.value) || 0;
+  const refundAmount = parseFloat(document.getElementById('refund-amount')?.value) || 0;
+  const taxRefund = parseFloat(document.getElementById('tax-refund')?.value) || 0;
+  
+  // 计算利润：总价 × 汇率 - 运费(陆内) - 运费(海运) - 退款金额 + 退税金额
+  const profit = (totalPrice * exchangeRate) - domesticShippingFee - overseasShippingFee - refundAmount + taxRefund;
+  
+  // 更新利润字段
+  const profitField = document.getElementById('profit');
+  if (profitField) {
+    profitField.value = profit.toFixed(2);
+  }
+  
+  // 更新计算过程显示
+  const calculationDisplay = document.getElementById('profit-calculation');
+  if (calculationDisplay) {
+    calculationDisplay.textContent = 
+      `计算过程：${totalPrice.toFixed(2)} × ${exchangeRate.toFixed(4)} - ${domesticShippingFee.toFixed(2)} - ${overseasShippingFee.toFixed(2)} - ${refundAmount.toFixed(2)} + ${taxRefund.toFixed(2)} = ¥${profit.toFixed(2)}`;
+  }
+} 

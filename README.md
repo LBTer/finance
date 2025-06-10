@@ -58,6 +58,9 @@ docker-compose ps
 # 环境激活
 source .venv/bin/activate
 
+# 更新数据库schema
+alembic upgrade head
+
 # 直接启动后端（开发模式）
 uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
 ```
