@@ -42,7 +42,7 @@ class SalesRecord(Base):
     # 总价（美元）
     total_price: Mapped[float] = mapped_column(Float(precision=2), nullable=False)
     # 汇率（美元-人民币）
-    exchange_rate: Mapped[float] = mapped_column(Float(precision=4), nullable=False, default=7.0)
+    exchange_rate: Mapped[float] = mapped_column(Float(precision=4), nullable=False, default=7.0, server_default="7.0") # server_default给旧行添加默认值
     
     
     # 费用信息
