@@ -14,6 +14,9 @@ RUN apt-get update && apt-get install -y \
 RUN pip install --upgrade pip
 RUN pip install uv
 
+# 创建文件目录
+RUN mkdir -p /app/files
+
 # 复制项目文件
 COPY . .
 

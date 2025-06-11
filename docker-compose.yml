@@ -104,6 +104,9 @@ services:
       FIRST_SUPERUSER_PASSWORD: admin123
       FIRST_SUPERUSER_FULL_NAME: 系统管理员
       FIRST_SUPERUSER_PHONE: "13246834775"
+    volumes:
+      # 存放附件的目录，映射到宿主机的数据盘
+      - /data/files:/app/files
     networks:
       - finance_network
     depends_on:
