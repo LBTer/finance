@@ -122,12 +122,20 @@ async def upload_attachments(
         logger.error(f"保存附件记录失败: {str(e)}", exc_info=True)
         await db.rollback()
         
-        # 清理已保存的文件
+        # 安全清理已保存的文件
         for attachment in attachments:
             try:
-                file_handler.delete_file(attachment.stored_filename)
-            except:
-                pass
+                # 检查文件是否被其他记录引用
+                result = await db.execute(
+                    select(Attachment).where(Attachment.stored_filename == attachment.stored_filename)
+                )
+                if not result.scalar_one_or_none():
+                    file_handler.delete_file(attachment.stored_filename)
+                    logger.info(f"回滚：删除未被引用的文件 - {attachment.stored_filename}")
+                else:
+                    logger.info(f"回滚：文件被其他记录引用，不删除 - {attachment.stored_filename}")
+            except Exception as cleanup_error:
+                logger.warning(f"清理文件时出错: {cleanup_error}")
         
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
