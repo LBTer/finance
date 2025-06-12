@@ -64,7 +64,10 @@ async def create_sales_record(
     # 重新查询以获取关联数据
     result = await db.execute(
         select(SalesRecord)
-        .options(joinedload(SalesRecord.user))
+        .options(
+            joinedload(SalesRecord.user),
+            joinedload(SalesRecord.attachments)
+        )
         .where(SalesRecord.id == record.id)
     )
     return result.scalar_one()
@@ -94,7 +97,8 @@ async def get_sales_records(
     
     query = select(SalesRecord).options(
         joinedload(SalesRecord.user),
-        joinedload(SalesRecord.approved_by)
+        joinedload(SalesRecord.approved_by),
+        joinedload(SalesRecord.attachments)
     )
     
     # 根据用户角色过滤
@@ -148,7 +152,8 @@ async def get_sales_record_by_id(
         select(SalesRecord)
         .options(
             joinedload(SalesRecord.user),
-            joinedload(SalesRecord.approved_by)
+            joinedload(SalesRecord.approved_by),
+            joinedload(SalesRecord.attachments)
         )
         .where(SalesRecord.id == record_id)
     )
@@ -196,7 +201,8 @@ async def update_sales_record(
         select(SalesRecord)
         .options(
             joinedload(SalesRecord.user),
-            joinedload(SalesRecord.approved_by)
+            joinedload(SalesRecord.approved_by),
+            joinedload(SalesRecord.attachments)
         )
         .where(SalesRecord.id == record_id)
     )
@@ -272,7 +278,8 @@ async def update_sales_record(
             select(SalesRecord)
             .options(
                 joinedload(SalesRecord.user),
-                joinedload(SalesRecord.approved_by)
+                joinedload(SalesRecord.approved_by),
+                joinedload(SalesRecord.attachments)
             )
             .where(SalesRecord.id == record.id)
         )

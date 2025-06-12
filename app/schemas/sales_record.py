@@ -1,9 +1,10 @@
-from typing import Optional
+from typing import Optional, List
 from datetime import datetime
 from pydantic import Field, field_validator
 from app.models.sales_record import SalesStatus
 from .base import BaseSchema, TimestampSchema
 from .user import UserResponse
+from .attachment import AttachmentResponse
 
 class SalesRecordBase(BaseSchema):
     """销售记录基础Schema"""
@@ -109,6 +110,7 @@ class SalesRecordResponse(SalesRecordInDBBase):
     user: UserResponse
     approved_by: Optional[UserResponse] = None
     total_amount: float
+    attachments: List[AttachmentResponse] = []
 
     class Config:
         from_attributes = True 

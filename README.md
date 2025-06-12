@@ -25,6 +25,8 @@ docker-compose ps
    - 邮箱: `admin@example.com`  
    - 密码: `changeme`
 3. **首次登录后立即修改密码！**
+   - 邮箱: `1308340194@qq.com`  
+   - 密码: `lhyuauooan`
 
 ### 2. 添加代理主机
 1. 点击 "Hosts" → "Proxy Hosts" → "Add Proxy Host"

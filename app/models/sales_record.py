@@ -1,5 +1,5 @@
 from datetime import datetime
-from typing import Optional
+from typing import Optional, List
 from sqlalchemy import String, Integer, Float, ForeignKey, Enum as SQLAlchemyEnum, DateTime
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from app.db.base_class import Base
@@ -83,6 +83,13 @@ class SalesRecord(Base):
     def total_amount(self) -> float:
         """计算总金额（美元 + 人民币费用，需要根据汇率转换）"""
         return self.total_price + self.domestic_shipping_fee + self.overseas_shipping_fee - self.refund_amount - self.tax_refund
+    
+    # 关系：附件
+    attachments: Mapped[List["Attachment"]] = relationship(
+        "Attachment",
+        back_populates="sales_record",
+        cascade="all, delete-orphan"
+    )
     
     def __repr__(self) -> str:
         # 完全避免访问任何可能触发数据库查询的SQLAlchemy属性
