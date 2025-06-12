@@ -1,6 +1,6 @@
 import logging
-from typing import Annotated, List
-from fastapi import APIRouter, Depends, HTTPException, status, Query
+from typing import Annotated, List, Optional
+from fastapi import APIRouter, Depends, HTTPException, status, Query, UploadFile, File
 from sqlalchemy import select, or_
 from sqlalchemy.orm import joinedload
 from datetime import datetime, UTC
@@ -9,12 +9,16 @@ from app.core.dependencies import AsyncSessionDep, get_current_user
 from app.core.permissions import Action, check_sales_record_permissions, get_sales_record
 from app.models.user import User, UserRole
 from app.models.sales_record import SalesRecord, SalesStatus
+from app.models.attachment import Attachment
 from app.schemas.sales_record import (
     SalesRecordCreate,
     SalesRecordUpdate,
     SalesRecordResponse
 )
 from app.utils.logger import get_logger
+
+# 导入附件处理函数
+from app.api.v1.attachments import validate_and_save_attachments
 
 # 获取当前模块的logger
 logger = get_logger(__name__)
@@ -27,7 +31,8 @@ async def create_sales_record(
     *,
     db: AsyncSessionDep,
     record_in: SalesRecordCreate,
-    current_user: Annotated[User, Depends(get_current_user)]
+    current_user: Annotated[User, Depends(get_current_user)],
+    files: Optional[List[UploadFile]] = File(None)
 ) -> SalesRecord:
     """
     创建销售记录 (美金订单)
@@ -45,9 +50,13 @@ async def create_sales_record(
     - **tax_refund**: 退税金额（人民币）
     - **profit**: 利润（人民币）
     - **remarks**: 备注（可选）
+    - **files**: 附件文件列表（可选）
     """
     logger.info(f"创建销售记录 - user_id: {current_user.id}, order_number: {record_in.order_number}")
     logger.debug(f"创建数据: {record_in.model_dump()}")
+    
+    if files:
+        logger.info(f"包含附件 - 文件数量: {len(files)}")
     
     # 创建新记录
     record = SalesRecord(
@@ -56,21 +65,73 @@ async def create_sales_record(
         status=SalesStatus.PENDING
     )
     db.add(record)
-    await db.commit()
-    await db.refresh(record)
     
-    logger.info(f"销售记录创建成功 - id: {record.id}, order_number: {record.order_number}")
-    
-    # 重新查询以获取关联数据
-    result = await db.execute(
-        select(SalesRecord)
-        .options(
-            joinedload(SalesRecord.user),
-            joinedload(SalesRecord.attachments)
+    try:
+        # 先提交销售记录以获取ID
+        await db.commit()
+        await db.refresh(record)
+        
+        logger.info(f"销售记录创建成功 - id: {record.id}, order_number: {record.order_number}")
+        
+        # 如果有附件，处理附件上传
+        if files:
+            logger.info(f"开始处理附件 - record_id: {record.id}")
+            attachments = await validate_and_save_attachments(files, record.id, db, current_user.id)
+            
+            # 提交附件记录
+            await db.commit()
+            for attachment in attachments:
+                await db.refresh(attachment)
+            
+            logger.info(f"附件处理完成 - record_id: {record.id}, 附件数量: {len(attachments)}")
+        
+        # 重新查询以获取关联数据
+        result = await db.execute(
+            select(SalesRecord)
+            .options(
+                joinedload(SalesRecord.user),
+                joinedload(SalesRecord.attachments)
+            )
+            .where(SalesRecord.id == record.id)
         )
-        .where(SalesRecord.id == record.id)
-    )
-    return result.scalar_one()
+        final_record = result.scalar_one()
+        
+        logger.info(f"销售记录创建完成 - id: {final_record.id}, 附件数量: {len(final_record.attachments)}")
+        return final_record
+    
+    except Exception as e:
+        logger.error(f"创建销售记录失败: {str(e)}", exc_info=True)
+        await db.rollback()
+        
+        # 如果销售记录已创建但附件处理失败，需要清理可能已保存的文件
+        if hasattr(record, 'id') and files:
+            try:
+                # 查询可能已创建的附件记录
+                result = await db.execute(
+                    select(Attachment).where(Attachment.sales_record_id == record.id)
+                )
+                created_attachments = result.scalars().all()
+                
+                # 清理已保存的文件
+                for attachment in created_attachments:
+                    try:
+                        # 检查文件是否被其他记录引用
+                        result = await db.execute(
+                            select(Attachment).where(Attachment.stored_filename == attachment.stored_filename)
+                        )
+                        if not result.scalar_one_or_none():
+                            from app.utils.file_handler import file_handler
+                            file_handler.delete_file(attachment.stored_filename)
+                            logger.info(f"清理：删除未被引用的文件 - {attachment.stored_filename}")
+                    except Exception as cleanup_error:
+                        logger.warning(f"清理文件时出错: {cleanup_error}")
+            except Exception as query_error:
+                logger.warning(f"查询附件记录时出错: {query_error}")
+        
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"创建销售记录失败: {str(e)}"
+        )
 
 @router.get("", response_model=List[SalesRecordResponse])
 @check_sales_record_permissions(Action.READ)

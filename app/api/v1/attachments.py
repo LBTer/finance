@@ -34,6 +34,104 @@ ALLOWED_CONTENT_TYPES = {
 MAX_FILE_SIZE = 10 * 1024 * 1024
 
 
+async def validate_and_save_attachments(
+    files: List[UploadFile],
+    sales_record_id: int,
+    db: AsyncSessionDep,
+    user_id: int
+) -> List[Attachment]:
+    """
+    验证并保存附件的内部函数
+    
+    - **files**: 上传的文件列表
+    - **sales_record_id**: 销售记录ID
+    - **db**: 数据库会话
+    - **user_id**: 用户ID（用于日志记录）
+    
+    Returns:
+        List[Attachment]: 创建的附件对象列表
+    
+    Raises:
+        HTTPException: 文件验证失败或保存失败时抛出
+    """
+    if not files:
+        return []
+    
+    logger.info(f"开始处理附件 - sales_record_id: {sales_record_id}, 文件数量: {len(files)}, user_id: {user_id}")
+    
+    # 验证所有文件
+    for file in files:
+        # 检查文件大小
+        if file.size > MAX_FILE_SIZE:
+            raise HTTPException(
+                status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+                detail=f"文件 {file.filename} 太大，最大允许 {MAX_FILE_SIZE // (1024*1024)}MB"
+            )
+        
+        # 检查文件类型
+        if file.content_type not in ALLOWED_CONTENT_TYPES:
+            raise HTTPException(
+                status_code=status.HTTP_415_UNSUPPORTED_MEDIA_TYPE,
+                detail=f"不支持的文件类型: {file.content_type}"
+            )
+    
+    # 保存文件并创建附件记录
+    attachments = []
+    saved_files = []  # 跟踪已保存的文件，用于错误回滚
+    
+    try:
+        for file in files:
+            # 保存文件
+            file_md5, stored_filename, file_size = await file_handler.save_upload_file(file)
+            saved_files.append(stored_filename)
+            
+            # 创建附件记录
+            attachment_data = AttachmentCreate(
+                sales_record_id=sales_record_id,
+                original_filename=file.filename,
+                stored_filename=stored_filename,
+                file_size=file_size,
+                content_type=file.content_type,
+                file_md5=file_md5
+            )
+            
+            attachment = Attachment(**attachment_data.model_dump())
+            db.add(attachment)
+            attachments.append(attachment)
+            
+            logger.info(f"文件保存成功 - 原文件名: {file.filename}, 存储文件名: {stored_filename}, MD5: {file_md5}")
+        
+        logger.info(f"所有附件处理完成 - sales_record_id: {sales_record_id}, 成功处理 {len(attachments)} 个文件")
+        return attachments
+    
+    except Exception as e:
+        logger.error(f"保存附件失败: {str(e)}", exc_info=True)
+        
+        # 清理已保存的文件
+        for stored_filename in saved_files:
+            try:
+                # 检查文件是否被其他记录引用
+                result = await db.execute(
+                    select(Attachment).where(Attachment.stored_filename == stored_filename)
+                )
+                if not result.scalar_one_or_none():
+                    file_handler.delete_file(stored_filename)
+                    logger.info(f"清理：删除未被引用的文件 - {stored_filename}")
+                else:
+                    logger.info(f"清理：文件被其他记录引用，不删除 - {stored_filename}")
+            except Exception as cleanup_error:
+                logger.warning(f"清理文件时出错: {cleanup_error}")
+        
+        # 重新抛出原始异常
+        if isinstance(e, HTTPException):
+            raise e
+        else:
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail=f"保存附件失败: {str(e)}"
+            )
+
+
 @router.post("/upload/{sales_record_id}", response_model=List[AttachmentResponse])
 @check_sales_record_permissions(Action.UPDATE, get_sales_record)
 async def upload_attachments(
@@ -63,52 +161,8 @@ async def upload_attachments(
             detail="销售记录不存在"
         )
     
-    # 验证文件
-    for file in files:
-        # 检查文件大小
-        if file.size > MAX_FILE_SIZE:
-            raise HTTPException(
-                status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
-                detail=f"文件 {file.filename} 太大，最大允许 {MAX_FILE_SIZE // (1024*1024)}MB"
-            )
-        
-        # 检查文件类型
-        if file.content_type not in ALLOWED_CONTENT_TYPES:
-            raise HTTPException(
-                status_code=status.HTTP_415_UNSUPPORTED_MEDIA_TYPE,
-                detail=f"不支持的文件类型: {file.content_type}"
-            )
-    
-    # 保存文件并创建附件记录
-    attachments = []
-    
-    for file in files:
-        try:
-            # 保存文件
-            file_md5, stored_filename, file_size = await file_handler.save_upload_file(file)
-            
-            # 创建附件记录
-            attachment_data = AttachmentCreate(
-                sales_record_id=sales_record_id,
-                original_filename=file.filename,
-                stored_filename=stored_filename,
-                file_size=file_size,
-                content_type=file.content_type,
-                file_md5=file_md5
-            )
-            
-            attachment = Attachment(**attachment_data.model_dump())
-            db.add(attachment)
-            attachments.append(attachment)
-            
-            logger.info(f"文件保存成功 - 原文件名: {file.filename}, 存储文件名: {stored_filename}, MD5: {file_md5}")
-        
-        except Exception as e:
-            logger.error(f"保存文件失败 - {file.filename}: {str(e)}", exc_info=True)
-            raise HTTPException(
-                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail=f"保存文件失败: {file.filename}"
-            )
+    # 调用内部函数处理附件
+    attachments = await validate_and_save_attachments(files, sales_record_id, db, current_user.id)
     
     try:
         await db.commit()
@@ -122,7 +176,7 @@ async def upload_attachments(
         logger.error(f"保存附件记录失败: {str(e)}", exc_info=True)
         await db.rollback()
         
-        # 安全清理已保存的文件
+        # 清理已保存的文件
         for attachment in attachments:
             try:
                 # 检查文件是否被其他记录引用
