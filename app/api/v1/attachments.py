@@ -133,7 +133,7 @@ async def validate_and_save_attachments(
 
 
 @router.post("/upload/{sales_record_id}", response_model=List[AttachmentResponse])
-@check_sales_record_permissions(Action.UPDATE, get_sales_record)
+@check_sales_record_permissions(Action.UPDATE, lambda db, sales_record_id, **kwargs: get_sales_record(db, sales_record_id, **kwargs))
 async def upload_attachments(
     sales_record_id: int,
     files: Annotated[List[UploadFile], File(...)],
@@ -198,7 +198,7 @@ async def upload_attachments(
 
 
 @router.get("/{sales_record_id}", response_model=List[AttachmentResponse])
-@check_sales_record_permissions(Action.READ, get_sales_record)
+@check_sales_record_permissions(Action.READ, lambda db, sales_record_id, **kwargs: get_sales_record(db, sales_record_id, **kwargs))
 async def get_attachments(
     sales_record_id: int,
     db: AsyncSessionDep,

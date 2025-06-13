@@ -51,6 +51,9 @@ async function initSalesPage() {
   // 绑定利润计算相关字段的事件监听器
   bindProfitCalculationEvents();
   
+  // 绑定订单号验证事件
+  bindOrderNumberValidation();
+  
   // 绑定删除确认按钮事件
   const confirmDeleteButton = document.getElementById('confirm-delete-btn');
   if (confirmDeleteButton) {
@@ -185,6 +188,12 @@ function renderSalesTable(sales) {
       });
     };
     
+    // 附件数量显示
+    const attachmentCount = sale.attachments ? sale.attachments.length : 0;
+    const attachmentBadge = attachmentCount > 0 
+      ? `<span class="badge bg-primary">${attachmentCount}</span>` 
+      : '<span class="text-muted">-</span>';
+    
     row.innerHTML = `
       <td>${sale.order_number}</td>
       <td>${sale.product_name}</td>
@@ -196,6 +205,7 @@ function renderSalesTable(sales) {
       <td>${sale.logistics_company || '-'}</td>
       <td>¥${sale.profit ? sale.profit.toFixed(2) : '0.00'}</td>
       <td><span class="${statusClass}">${statusText}</span></td>
+      <td class="text-center">${attachmentBadge}</td>
       <td>${sale.user ? sale.user.full_name : '-'}</td>
       <td>${sale.approved_by ? sale.approved_by.full_name : '-'}</td>
       <td>${formatDateTime(sale.created_at)}</td>
@@ -343,11 +353,19 @@ function showAddSalesModal() {
     recordIdInput.value = '';
   }
   
+  // 清理附件表单
+  if (window.attachmentsManager) {
+    window.attachmentsManager.clearForm();
+  }
+  
   // 重新启用订单编号字段（新增时允许输入）
   const orderNumberInput = document.getElementById('order-number');
   if (orderNumberInput) {
     orderNumberInput.disabled = false;
   }
+  
+  // 清除订单号验证状态
+  clearOrderNumberValidation();
   
   // 重新绑定利润计算事件并计算利润
   bindProfitCalculationEvents();
@@ -355,6 +373,18 @@ function showAddSalesModal() {
   // 显示模态框
   const modal = new bootstrap.Modal(document.getElementById('sales-modal'));
   modal.show();
+  
+  // 模态框显示后设置附件区域显示状态
+  modal._element.addEventListener('shown.bs.modal', function() {
+    // 新增模式：隐藏编辑附件区域，显示新增附件区域
+    const editAttachmentsContainer = document.getElementById('edit-attachments-container');
+    const editUploadArea = document.getElementById('edit-attachment-upload-area');
+    const newRecordAttachments = document.getElementById('new-record-attachments');
+    
+    if (editAttachmentsContainer) editAttachmentsContainer.style.display = 'none';
+    if (editUploadArea) editUploadArea.style.display = 'none';
+    if (newRecordAttachments) newRecordAttachments.style.display = 'block';
+  }, { once: true });
 }
 
 // 显示编辑销售记录模态框
@@ -402,12 +432,29 @@ async function showEditSalesModal(id) {
     // 禁用订单编号字段（不允许修改）
     document.getElementById('order-number').disabled = true;
     
+    // 清理附件表单
+    if (window.attachmentsManager) {
+      window.attachmentsManager.clearForm();
+    }
+    
     // 重新绑定利润计算事件并计算利润
     bindProfitCalculationEvents();
     
     // 显示模态框
     const modal = new bootstrap.Modal(document.getElementById('sales-modal'));
     modal.show();
+    
+    // 模态框显示后加载附件列表 - 编辑模式下允许管理附件
+    modal._element.addEventListener('shown.bs.modal', async function() {
+      // 检查编辑权限：高级用户和超级管理员可以在任何状态下管理附件
+      const canEditAttachments = (currentUser.role === 'admin' || currentUser.role === 'senior') ||
+                                 (currentUser.id === record.user_id && record.status === 'pending');
+      
+      console.log('编辑模式附件权限:', canEditAttachments, '用户角色:', currentUser.role, '记录状态:', record.status);
+      if (window.attachmentsManager) {
+        await window.attachmentsManager.loadAttachments(record.id, canEditAttachments);
+      }
+    }, { once: true });
   } catch (error) {
     console.error('获取销售记录详情失败:', error);
     showToast('error', '获取记录详情失败，请稍后重试');
@@ -430,43 +477,128 @@ async function handleSaveSales() {
   // 确保利润已经计算
   calculateProfit();
   
-  const formData = {
-    order_number: document.getElementById('order-number').value.trim(),
-    product_name: document.getElementById('product-name').value.trim(),
-    category: document.getElementById('category').value.trim() || null,
-    quantity: parseInt(document.getElementById('quantity').value),
-    unit_price: parseFloat(document.getElementById('unit-price').value),
-    total_price: parseFloat(document.getElementById('total-price').value),
-    exchange_rate: parseFloat(document.getElementById('exchange-rate').value) || 7.0000,
-    domestic_shipping_fee: parseFloat(document.getElementById('domestic-shipping-fee').value) || 0,
-    overseas_shipping_fee: parseFloat(document.getElementById('overseas-shipping-fee').value) || 0,
-    logistics_company: document.getElementById('logistics-company').value.trim() || null,
-    refund_amount: parseFloat(document.getElementById('refund-amount').value) || 0,
-    tax_refund: parseFloat(document.getElementById('tax-refund').value) || 0,
-    profit: parseFloat(document.getElementById('profit').value) || 0,
-    remarks: document.getElementById('remarks').value.trim() || null
-  };
-  
   try {
     let response;
     
     if (isEdit) {
       // 更新现有记录
+      const formData = {
+        order_number: document.getElementById('order-number').value.trim(),
+        product_name: document.getElementById('product-name').value.trim(),
+        category: document.getElementById('category').value.trim() || null,
+        quantity: parseInt(document.getElementById('quantity').value),
+        unit_price: parseFloat(document.getElementById('unit-price').value),
+        total_price: parseFloat(document.getElementById('total-price').value),
+        exchange_rate: parseFloat(document.getElementById('exchange-rate').value) || 7.0000,
+        domestic_shipping_fee: parseFloat(document.getElementById('domestic-shipping-fee').value) || 0,
+        overseas_shipping_fee: parseFloat(document.getElementById('overseas-shipping-fee').value) || 0,
+        logistics_company: document.getElementById('logistics-company').value.trim() || null,
+        refund_amount: parseFloat(document.getElementById('refund-amount').value) || 0,
+        tax_refund: parseFloat(document.getElementById('tax-refund').value) || 0,
+        profit: parseFloat(document.getElementById('profit').value) || 0,
+        remarks: document.getElementById('remarks').value.trim() || null
+      };
+      
+      // 先更新销售记录
       response = await apiRequest(`/sales/${recordId}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(formData)
       });
+      
+      // 如果有新选择的附件，则上传它们
+      if (response && window.attachmentsManager) {
+        const files = window.attachmentsManager.getFormFiles();
+        if (files && files.length > 0) {
+          try {
+            showLoading();
+            showToast('info', '正在上传附件...');
+            
+            const uploadFormData = new FormData();
+            for (let i = 0; i < files.length; i++) {
+              uploadFormData.append('files', files[i]);
+            }
+            
+            const uploadResponse = await fetch(`/api/v1/attachments/upload/${recordId}`, {
+              method: 'POST',
+              headers: {
+                'Authorization': `Bearer ${getToken()}`
+              },
+              body: uploadFormData
+            });
+            
+            if (!uploadResponse.ok) {
+              const error = await uploadResponse.json();
+              throw new Error(error.detail || '附件上传失败');
+            }
+            
+            const uploadResult = await uploadResponse.json();
+            showToast('success', `成功上传 ${uploadResult.length} 个附件`);
+            
+          } catch (uploadError) {
+            console.error('上传附件失败:', uploadError);
+            showToast('warning', `销售记录更新成功，但附件上传失败: ${uploadError.message}`);
+          } finally {
+            hideLoading();
+          }
+        }
+      }
     } else {
-      // 创建新记录
-      response = await apiRequest('/sales', {
+      // 创建新记录，支持文件上传
+      const formData = new FormData();
+      
+      // 添加基本字段
+      formData.append('order_number', document.getElementById('order-number').value.trim());
+      formData.append('product_name', document.getElementById('product-name').value.trim());
+      
+      const category = document.getElementById('category').value.trim();
+      if (category) formData.append('category', category);
+      
+      formData.append('quantity', parseInt(document.getElementById('quantity').value));
+      formData.append('unit_price', parseFloat(document.getElementById('unit-price').value));
+      formData.append('total_price', parseFloat(document.getElementById('total-price').value));
+      formData.append('exchange_rate', parseFloat(document.getElementById('exchange-rate').value) || 7.0000);
+      formData.append('domestic_shipping_fee', parseFloat(document.getElementById('domestic-shipping-fee').value) || 0);
+      formData.append('overseas_shipping_fee', parseFloat(document.getElementById('overseas-shipping-fee').value) || 0);
+      
+      const logisticsCompany = document.getElementById('logistics-company').value.trim();
+      if (logisticsCompany) formData.append('logistics_company', logisticsCompany);
+      
+      formData.append('refund_amount', parseFloat(document.getElementById('refund-amount').value) || 0);
+      formData.append('tax_refund', parseFloat(document.getElementById('tax-refund').value) || 0);
+      formData.append('profit', parseFloat(document.getElementById('profit').value) || 0);
+      
+      const remarks = document.getElementById('remarks').value.trim();
+      if (remarks) formData.append('remarks', remarks);
+      
+      // 添加文件（如果有）
+      const files = window.attachmentsManager ? window.attachmentsManager.getFormFiles() : [];
+      for (let i = 0; i < files.length; i++) {
+        formData.append('files', files[i]);
+      }
+      
+      response = await fetch('/api/v1/sales', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(formData)
+        headers: {
+          'Authorization': `Bearer ${getToken()}`
+        },
+        body: formData
       });
+      
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.detail || '创建失败');
+      }
+      
+      response = await response.json();
     }
     
     if (response) {
+      // 清理附件表单
+      if (window.attachmentsManager) {
+        window.attachmentsManager.clearForm();
+      }
+      
       // 隐藏模态框
       const modal = bootstrap.Modal.getInstance(document.getElementById('sales-modal'));
       modal.hide();
@@ -479,7 +611,7 @@ async function handleSaveSales() {
     }
   } catch (error) {
     console.error('保存销售记录失败:', error);
-    showToast('error', '保存记录失败，请稍后重试');
+    showToast('error', error.message || '保存记录失败，请稍后重试');
   }
 }
 
@@ -614,6 +746,15 @@ async function showSalesDetails(id, showApproveButtons = false) {
       rejectBtn.dataset.recordId = id;
     }
     
+    // 加载附件列表 - 查看模式下不允许编辑附件
+    console.log('准备加载附件，attachmentsManager存在:', !!window.attachmentsManager);
+    if (window.attachmentsManager) {
+      await window.attachmentsManager.loadAttachments(record.id, false); // 查看模式：只读
+    } else {
+      console.error('attachmentsManager未找到');
+      showToast('error', '附件管理器未初始化');
+    }
+    
     // 显示模态框
     const modal = new bootstrap.Modal(document.getElementById('details-modal'));
     modal.show();
@@ -716,6 +857,8 @@ function bindProfitCalculationEvents() {
   calculateProfit();
 }
 
+// 注意：attachmentsManager现在由attachments.js提供全局实例
+
 // 计算利润
 function calculateProfit() {
   const totalPrice = parseFloat(document.getElementById('total-price')?.value) || 0;
@@ -740,4 +883,123 @@ function calculateProfit() {
     calculationDisplay.textContent = 
       `计算过程：${totalPrice.toFixed(2)} × ${exchangeRate.toFixed(4)} - ${domesticShippingFee.toFixed(2)} - ${overseasShippingFee.toFixed(2)} - ${refundAmount.toFixed(2)} + ${taxRefund.toFixed(2)} = ¥${profit.toFixed(2)}`;
   }
+}
+
+// 订单号验证相关变量
+let orderNumberCheckTimeout = null;
+let lastCheckedOrderNumber = '';
+
+// 绑定订单号验证事件
+function bindOrderNumberValidation() {
+  const orderNumberInput = document.getElementById('order-number');
+  if (!orderNumberInput) return;
+  
+  orderNumberInput.addEventListener('input', handleOrderNumberInput);
+  orderNumberInput.addEventListener('blur', handleOrderNumberBlur);
+}
+
+// 处理订单号输入事件
+function handleOrderNumberInput(event) {
+  const orderNumber = event.target.value.trim();
+  const feedback = document.getElementById('order-number-feedback');
+  
+  // 清除之前的定时器
+  if (orderNumberCheckTimeout) {
+    clearTimeout(orderNumberCheckTimeout);
+  }
+  
+  // 如果输入为空，清除反馈
+  if (!orderNumber) {
+    feedback.textContent = '';
+    feedback.className = 'form-text';
+    return;
+  }
+  
+  // 如果是编辑模式，不需要检查
+  const recordId = document.getElementById('record-id').value;
+  if (recordId) {
+    feedback.textContent = '';
+    feedback.className = 'form-text';
+    return;
+  }
+  
+  // 显示检查中状态
+  feedback.textContent = '检查中...';
+  feedback.className = 'form-text text-muted';
+  
+  // 设置延迟检查（防抖）
+  orderNumberCheckTimeout = setTimeout(() => {
+    checkOrderNumberAvailability(orderNumber);
+  }, 500);
+}
+
+// 处理订单号失焦事件
+function handleOrderNumberBlur(event) {
+  const orderNumber = event.target.value.trim();
+  
+  // 如果有未完成的检查，立即执行
+  if (orderNumberCheckTimeout) {
+    clearTimeout(orderNumberCheckTimeout);
+    if (orderNumber && orderNumber !== lastCheckedOrderNumber) {
+      checkOrderNumberAvailability(orderNumber);
+    }
+  }
+}
+
+// 检查订单号可用性
+async function checkOrderNumberAvailability(orderNumber) {
+  if (!orderNumber || orderNumber === lastCheckedOrderNumber) return;
+  
+  const feedback = document.getElementById('order-number-feedback');
+  const orderNumberInput = document.getElementById('order-number');
+  
+  try {
+    const response = await fetch(`/api/v1/sales/check-order-number/${encodeURIComponent(orderNumber)}`, {
+      headers: {
+        'Authorization': `Bearer ${getToken()}`
+      }
+    });
+    
+    if (!response.ok) {
+      throw new Error('检查失败');
+    }
+    
+    const result = await response.json();
+    lastCheckedOrderNumber = orderNumber;
+    
+    if (result.available) {
+      feedback.textContent = `✓ ${result.message}`;
+      feedback.className = 'form-text text-success';
+      orderNumberInput.classList.remove('is-invalid');
+      orderNumberInput.classList.add('is-valid');
+    } else {
+      feedback.textContent = `✗ ${result.message}`;
+      feedback.className = 'form-text text-danger';
+      orderNumberInput.classList.remove('is-valid');
+      orderNumberInput.classList.add('is-invalid');
+    }
+    
+  } catch (error) {
+    console.error('检查订单号失败:', error);
+    feedback.textContent = '检查失败，请稍后重试';
+    feedback.className = 'form-text text-warning';
+    orderNumberInput.classList.remove('is-valid', 'is-invalid');
+  }
+}
+
+// 清除订单号验证状态
+function clearOrderNumberValidation() {
+  const feedback = document.getElementById('order-number-feedback');
+  const orderNumberInput = document.getElementById('order-number');
+  
+  if (feedback) {
+    feedback.textContent = '';
+    feedback.className = 'form-text';
+  }
+  
+  if (orderNumberInput) {
+    orderNumberInput.classList.remove('is-valid', 'is-invalid');
+  }
+  
+  lastCheckedOrderNumber = '';
 } 

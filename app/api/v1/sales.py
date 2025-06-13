@@ -1,6 +1,6 @@
 import logging
 from typing import Annotated, List, Optional
-from fastapi import APIRouter, Depends, HTTPException, status, Query, UploadFile, File
+from fastapi import APIRouter, Depends, HTTPException, status, Query, UploadFile, File, Form
 from sqlalchemy import select, or_
 from sqlalchemy.orm import joinedload
 from datetime import datetime, UTC
@@ -25,13 +25,62 @@ logger = get_logger(__name__)
 
 router = APIRouter(prefix="/sales", tags=["销售记录"])
 
+@router.get("/check-order-number/{order_number}")
+@check_sales_record_permissions(Action.CREATE)
+async def check_order_number(
+    order_number: str,
+    db: AsyncSessionDep,
+    current_user: Annotated[User, Depends(get_current_user)]
+) -> dict:
+    """
+    检查订单号是否可用
+    
+    - **order_number**: 要检查的订单号
+    
+    返回:
+    - **available**: 是否可用 (true/false)
+    - **message**: 提示信息
+    """
+    logger.info(f"检查订单号可用性 - order_number: {order_number}, user_id: {current_user.id}")
+    
+    existing_record = await db.execute(
+        select(SalesRecord).where(SalesRecord.order_number == order_number)
+    )
+    
+    if existing_record.scalar_one_or_none():
+        logger.debug(f"订单号已存在 - {order_number}")
+        return {
+            "available": False,
+            "message": f"订单号 '{order_number}' 已存在"
+        }
+    else:
+        logger.debug(f"订单号可用 - {order_number}")
+        return {
+            "available": True,
+            "message": f"订单号 '{order_number}' 可用"
+        }
+
 @router.post("", response_model=SalesRecordResponse)
 @check_sales_record_permissions(Action.CREATE)
 async def create_sales_record(
     *,
     db: AsyncSessionDep,
-    record_in: SalesRecordCreate,
     current_user: Annotated[User, Depends(get_current_user)],
+    # 表单字段
+    order_number: str = Form(...),
+    product_name: str = Form(...),
+    quantity: int = Form(...),
+    unit_price: float = Form(...),
+    total_price: float = Form(...),
+    exchange_rate: float = Form(7.0000),
+    domestic_shipping_fee: float = Form(0),
+    overseas_shipping_fee: float = Form(0),
+    refund_amount: float = Form(0),
+    tax_refund: float = Form(0),
+    profit: float = Form(0),
+    category: Optional[str] = Form(None),
+    logistics_company: Optional[str] = Form(None),
+    remarks: Optional[str] = Form(None),
     files: Optional[List[UploadFile]] = File(None)
 ) -> SalesRecord:
     """
@@ -52,18 +101,46 @@ async def create_sales_record(
     - **remarks**: 备注（可选）
     - **files**: 附件文件列表（可选）
     """
-    logger.info(f"创建销售记录 - user_id: {current_user.id}, order_number: {record_in.order_number}")
-    logger.debug(f"创建数据: {record_in.model_dump()}")
+    logger.info(f"创建销售记录 - user_id: {current_user.id}, order_number: {order_number}")
+    
+    # 检查订单号是否已存在
+    existing_record = await db.execute(
+        select(SalesRecord).where(SalesRecord.order_number == order_number)
+    )
+    if existing_record.scalar_one_or_none():
+        logger.warning(f"订单号重复 - order_number: {order_number}")
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"订单号 '{order_number}' 已存在，请使用不同的订单号"
+        )
+    
+    # 构建记录数据
+    record_data = {
+        'order_number': order_number,
+        'product_name': product_name,
+        'quantity': quantity,
+        'unit_price': unit_price,
+        'total_price': total_price,
+        'exchange_rate': exchange_rate,
+        'domestic_shipping_fee': domestic_shipping_fee,
+        'overseas_shipping_fee': overseas_shipping_fee,
+        'refund_amount': refund_amount,
+        'tax_refund': tax_refund,
+        'profit': profit,
+        'category': category,
+        'logistics_company': logistics_company,
+        'remarks': remarks,
+        'user_id': current_user.id,
+        'status': SalesStatus.PENDING
+    }
+    
+    logger.debug(f"创建数据: {record_data}")
     
     if files:
         logger.info(f"包含附件 - 文件数量: {len(files)}")
     
     # 创建新记录
-    record = SalesRecord(
-        **record_in.model_dump(),
-        user_id=current_user.id,
-        status=SalesStatus.PENDING
-    )
+    record = SalesRecord(**record_data)
     db.add(record)
     
     try:
@@ -94,7 +171,7 @@ async def create_sales_record(
             )
             .where(SalesRecord.id == record.id)
         )
-        final_record = result.scalar_one()
+        final_record = result.unique().scalar_one()
         
         logger.info(f"销售记录创建完成 - id: {final_record.id}, 附件数量: {len(final_record.attachments)}")
         return final_record
@@ -188,11 +265,14 @@ async def get_sales_records(
         )
         logger.debug(f"搜索筛选 - {search}")
     
+    # 按ID倒序排序（最新记录在前）
+    query = query.order_by(SalesRecord.id.desc())
+    
     # 分页
     query = query.offset(skip).limit(limit)
     
     result = await db.execute(query)
-    records = result.scalars().all()
+    records = result.unique().scalars().all()
     
     logger.info(f"查询完成 - 返回 {len(records)} 条记录")
     return records
@@ -218,7 +298,7 @@ async def get_sales_record_by_id(
         )
         .where(SalesRecord.id == record_id)
     )
-    record = result.scalar_one_or_none()
+    record = result.unique().scalar_one_or_none()
     
     if not record:
         logger.warning(f"查询的记录不存在 - record_id: {record_id}")
@@ -267,7 +347,7 @@ async def update_sales_record(
         )
         .where(SalesRecord.id == record_id)
     )
-    record = result.scalar_one_or_none()
+    record = result.unique().scalar_one_or_none()
     
     if not record:
         logger.warning(f"记录不存在 - record_id: {record_id}")
@@ -344,7 +424,7 @@ async def update_sales_record(
             )
             .where(SalesRecord.id == record.id)
         )
-        final_record = result.scalar_one()
+        final_record = result.unique().scalar_one()
         
         logger.info(f"最终查询结果 - status: {final_record.status}, approved_by_id: {final_record.approved_by_id}, approved_at: {final_record.approved_at}")
         logger.info(f"审核人信息: {final_record.approved_by.full_name if final_record.approved_by else 'None'}")

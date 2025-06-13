@@ -24,6 +24,11 @@ function hideLoading() {
   document.querySelector('.loading-spinner').classList.remove('show');
 }
 
+// 获取token
+function getToken() {
+  return localStorage.getItem('token');
+}
+
 // 登录状态检查
 function checkAuth() {
   const token = localStorage.getItem('token');
