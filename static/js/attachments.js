@@ -4,6 +4,7 @@ class AttachmentsManager {
         this.currentRecordId = null;
         this.canEdit = false;
         this.selectedFiles = []; // 存储已选择的文件
+        this.isEditMode = false; // 跟踪当前模式
         this.init();
     }
 
@@ -175,10 +176,12 @@ class AttachmentsManager {
     }
 
     // 加载附件列表
-    async loadAttachments(recordId, canEdit = false) {
-        console.log('开始加载附件列表，recordId:', recordId, 'canEdit:', canEdit);
+    async loadAttachments(recordId, canEdit = false, isEditMode = false) {
+        console.log('loadAttachments - recordId:', recordId, 'canEdit:', canEdit, 'isEditMode:', isEditMode);
+        
         this.currentRecordId = recordId;
         this.canEdit = canEdit;
+        this.isEditMode = isEditMode; // 保存当前模式
 
         try {
             const token = getToken();
@@ -200,7 +203,7 @@ class AttachmentsManager {
 
             const attachments = await response.json();
             console.log('获取到的附件数据:', attachments);
-            this.displayAttachments(attachments);
+            this.displayAttachments(attachments, isEditMode);
             
             // 根据权限显示上传区域 - 在displayAttachments中处理
 
@@ -211,13 +214,8 @@ class AttachmentsManager {
     }
 
     // 显示附件列表
-    displayAttachments(attachments) {
-        console.log('开始显示附件列表，附件数量:', attachments.length);
-        
-        // 检测当前是在哪个模态框中
-        const detailsModal = document.getElementById('details-modal');
-        const salesModal = document.getElementById('sales-modal');
-        const isEditMode = salesModal && salesModal.classList.contains('show');
+    displayAttachments(attachments, isEditMode = false) {
+        console.log('displayAttachments - 附件数量:', attachments.length, 'isEditMode:', isEditMode);
         
         let container, noAttachments, uploadArea;
         
@@ -232,10 +230,6 @@ class AttachmentsManager {
             noAttachments = document.getElementById('no-attachments');
             uploadArea = document.getElementById('attachment-upload-area');
         }
-        
-        console.log('模式:', isEditMode ? '编辑' : '查看');
-        console.log('容器元素:', container ? '找到' : '未找到');
-        console.log('无附件提示元素:', noAttachments ? '找到' : '未找到');
         
         if (!container || !noAttachments) {
             console.error('附件显示容器元素未找到');
@@ -360,7 +354,7 @@ class AttachmentsManager {
             fileInput.value = '';
             
             // 重新加载附件列表
-            await this.loadAttachments(this.currentRecordId, this.canEdit);
+            await this.loadAttachments(this.currentRecordId, this.canEdit, false); // 查看模式上传
 
         } catch (error) {
             console.error('上传附件失败:', error);
@@ -413,7 +407,10 @@ class AttachmentsManager {
             fileInput.value = '';
             
             // 重新加载附件列表
-            await this.loadAttachments(this.currentRecordId, this.canEdit);
+            await this.loadAttachments(this.currentRecordId, this.canEdit, true); // 编辑模式上传
+            
+            // 更新主列表中的附件数量显示
+            this.updateMainListAttachmentCount(this.currentRecordId);
 
         } catch (error) {
             console.error('上传附件失败:', error);
@@ -493,7 +490,10 @@ class AttachmentsManager {
             showToast('success', `文件 "${filename}" 已删除`);
             
             // 重新加载附件列表
-            await this.loadAttachments(this.currentRecordId, this.canEdit);
+            await this.loadAttachments(this.currentRecordId, this.canEdit, this.isEditMode); // 使用保存的模式
+            
+            // 更新主列表中的附件数量显示
+            this.updateMainListAttachmentCount(this.currentRecordId);
 
         } catch (error) {
             console.error('删除附件失败:', error);
@@ -543,12 +543,64 @@ class AttachmentsManager {
         const newAttachments = document.getElementById('new-attachments');
         if (newAttachments) newAttachments.value = '';
         
+        const editNewAttachments = document.getElementById('edit-new-attachments');
+        if (editNewAttachments) editNewAttachments.value = '';
+        
+        // 重置所有状态变量
         this.selectedFiles = []; // 清空内部文件数组
+        this.currentRecordId = null; // 重置记录ID
+        this.canEdit = false; // 重置编辑权限
+        this.isEditMode = false; // 重置编辑模式
+        
+        console.log('clearForm - 状态已重置');
     }
 
     // 获取表单数据中的文件
     getFormFiles() {
         return this.selectedFiles;
+    }
+
+    // 更新主列表中指定记录的附件数量显示
+    async updateMainListAttachmentCount(recordId) {
+        try {
+            // 获取最新的附件数量
+            const response = await fetch(`/api/v1/attachments/${recordId}`, {
+                headers: {
+                    'Authorization': `Bearer ${getToken()}`
+                }
+            });
+
+            if (!response.ok) {
+                console.error('获取附件数量失败');
+                return;
+            }
+
+            const attachments = await response.json();
+            const attachmentCount = attachments.length;
+
+            // 查找主列表中对应的行并更新附件数量显示
+            const tableRows = document.querySelectorAll('#sales-table tbody tr');
+            tableRows.forEach(row => {
+                const editButton = row.querySelector('button[onclick*="showEditModal"]');
+                if (editButton) {
+                    const onclickAttr = editButton.getAttribute('onclick');
+                    const match = onclickAttr.match(/showEditModal\('(\d+)'\)/);
+                    if (match && match[1] === recordId.toString()) {
+                        // 找到对应的行，更新附件数量
+                        const attachmentCell = row.cells[10]; // 附件数量在第11列（索引10）
+                        if (attachmentCell) {
+                            const attachmentBadge = attachmentCount > 0 
+                                ? `<span class="badge bg-primary">${attachmentCount}</span>` 
+                                : '<span class="text-muted">-</span>';
+                            attachmentCell.innerHTML = attachmentBadge;
+                            console.log(`已更新记录 ${recordId} 的附件数量显示: ${attachmentCount}`);
+                        }
+                    }
+                }
+            });
+        } catch (error) {
+            console.error('更新主列表附件数量失败:', error);
+        }
     }
 }
 

@@ -446,14 +446,17 @@ async def delete_sales_record(
     current_user: Annotated[User, Depends(get_current_user)]
 ) -> dict:
     """
-    删除销售记录
+    删除销售记录（同时删除相关附件文件）
     """
     logger.info(f"删除销售记录 - record_id: {record_id}, user_id: {current_user.id}")
     
+    # 查询记录及其附件
     result = await db.execute(
-        select(SalesRecord).where(SalesRecord.id == record_id)
+        select(SalesRecord)
+        .options(joinedload(SalesRecord.attachments))
+        .where(SalesRecord.id == record_id)
     )
-    record = result.scalar_one_or_none()
+    record = result.unique().scalar_one_or_none()
     
     if not record:
         logger.warning(f"要删除的记录不存在 - record_id: {record_id}")
@@ -466,13 +469,47 @@ async def delete_sales_record(
     _ = record.order_number
     order_number = record.order_number
     
+    # 收集需要删除的附件文件信息
+    attachments_to_delete = []
+    if record.attachments:
+        for attachment in record.attachments:
+            attachments_to_delete.append({
+                'id': attachment.id,
+                'stored_filename': attachment.stored_filename,
+                'original_filename': attachment.original_filename
+            })
+        logger.info(f"记录包含 {len(attachments_to_delete)} 个附件需要清理")
+    
     logger.info(f"准备删除记录 - id: {record_id}, order_number: {order_number}")
     
     try:
+        # 删除销售记录（会自动删除附件表记录）
         await db.delete(record)
         await db.commit()
         logger.info(f"销售记录删除成功 - id: {record_id}, order_number: {order_number}")
-        return {"message": "记录已删除"}
+        
+        # 删除物理文件
+        if attachments_to_delete:
+            from app.utils.file_handler import file_handler
+            
+            for attachment_info in attachments_to_delete:
+                try:
+                    # 检查文件是否被其他记录引用（防止误删共享文件）
+                    result = await db.execute(
+                        select(Attachment).where(Attachment.stored_filename == attachment_info['stored_filename'])
+                    )
+                    if not result.scalar_one_or_none():
+                        # 文件没有被其他记录引用，可以安全删除
+                        if file_handler.delete_file(attachment_info['stored_filename']):
+                            logger.info(f"成功删除附件文件 - {attachment_info['stored_filename']} ({attachment_info['original_filename']})")
+                        else:
+                            logger.warning(f"删除附件文件失败 - {attachment_info['stored_filename']} ({attachment_info['original_filename']})")
+                    else:
+                        logger.info(f"附件文件被其他记录引用，跳过删除 - {attachment_info['stored_filename']}")
+                except Exception as file_error:
+                    logger.error(f"处理附件文件时出错 - {attachment_info['stored_filename']}: {file_error}")
+        
+        return {"message": "记录及相关附件已删除"}
     except Exception as e:
         logger.error(f"删除记录失败 - id: {record_id}: {str(e)}", exc_info=True)
         await db.rollback()

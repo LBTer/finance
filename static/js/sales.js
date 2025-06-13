@@ -54,6 +54,17 @@ async function initSalesPage() {
   // 绑定订单号验证事件
   bindOrderNumberValidation();
   
+  // 绑定模态框隐藏事件 - 重置附件管理器状态
+  const salesModal = document.getElementById('sales-modal');
+  if (salesModal) {
+    salesModal.addEventListener('hidden.bs.modal', function() {
+      console.log('销售记录模态框已隐藏，重置附件管理器状态');
+      if (window.attachmentsManager) {
+        window.attachmentsManager.clearForm();
+      }
+    });
+  }
+  
   // 绑定删除确认按钮事件
   const confirmDeleteButton = document.getElementById('confirm-delete-btn');
   if (confirmDeleteButton) {
@@ -353,7 +364,7 @@ function showAddSalesModal() {
     recordIdInput.value = '';
   }
   
-  // 清理附件表单
+  // 清理附件表单并重置状态
   if (window.attachmentsManager) {
     window.attachmentsManager.clearForm();
   }
@@ -432,9 +443,28 @@ async function showEditSalesModal(id) {
     // 禁用订单编号字段（不允许修改）
     document.getElementById('order-number').disabled = true;
     
-    // 清理附件表单
+    // 只清理附件表单DOM元素，不重置状态（编辑模式下需要保持状态）
     if (window.attachmentsManager) {
-      window.attachmentsManager.clearForm();
+      // 只清理DOM元素，不重置状态变量
+      const attachmentsInput = document.getElementById('attachments');
+      if (attachmentsInput) attachmentsInput.value = '';
+      
+      const selectedFiles = document.getElementById('selected-files');
+      if (selectedFiles) selectedFiles.style.display = 'none';
+      
+      const fileList = document.getElementById('file-list');
+      if (fileList) fileList.innerHTML = '';
+      
+      const newAttachments = document.getElementById('new-attachments');
+      if (newAttachments) newAttachments.value = '';
+      
+      const editNewAttachments = document.getElementById('edit-new-attachments');
+      if (editNewAttachments) editNewAttachments.value = '';
+      
+      // 只清空选择的文件数组，不重置其他状态
+      window.attachmentsManager.selectedFiles = [];
+      
+      console.log('编辑模式：只清理DOM元素，保持状态变量');
     }
     
     // 重新绑定利润计算事件并计算利润
@@ -446,13 +476,29 @@ async function showEditSalesModal(id) {
     
     // 模态框显示后加载附件列表 - 编辑模式下允许管理附件
     modal._element.addEventListener('shown.bs.modal', async function() {
+      // 编辑模式：显示编辑附件区域，隐藏新增附件区域
+      const editAttachmentsContainer = document.getElementById('edit-attachments-container');
+      const editUploadArea = document.getElementById('edit-attachment-upload-area');
+      const newRecordAttachments = document.getElementById('new-record-attachments');
+      
+      if (editAttachmentsContainer) editAttachmentsContainer.style.display = 'block';
+      if (newRecordAttachments) newRecordAttachments.style.display = 'none';
+      
       // 检查编辑权限：高级用户和超级管理员可以在任何状态下管理附件
       const canEditAttachments = (currentUser.role === 'admin' || currentUser.role === 'senior') ||
                                  (currentUser.id === record.user_id && record.status === 'pending');
       
+      // 根据权限显示上传区域
+      if (editUploadArea) {
+        editUploadArea.style.display = canEditAttachments ? 'block' : 'none';
+      }
+      
       console.log('编辑模式附件权限:', canEditAttachments, '用户角色:', currentUser.role, '记录状态:', record.status);
+      console.log('编辑模式：使用已获取的记录数据，附件数量:', record.attachments ? record.attachments.length : 0);
+      
+      // 直接使用已获取的记录数据，避免重复请求
       if (window.attachmentsManager) {
-        await window.attachmentsManager.loadAttachments(record.id, canEditAttachments);
+        await window.attachmentsManager.loadAttachments(record.id, canEditAttachments, true); // 明确指定为编辑模式
       }
     }, { once: true });
   } catch (error) {
@@ -749,7 +795,7 @@ async function showSalesDetails(id, showApproveButtons = false) {
     // 加载附件列表 - 查看模式下不允许编辑附件
     console.log('准备加载附件，attachmentsManager存在:', !!window.attachmentsManager);
     if (window.attachmentsManager) {
-      await window.attachmentsManager.loadAttachments(record.id, false); // 查看模式：只读
+      await window.attachmentsManager.loadAttachments(record.id, false, false); // 查看模式：只读
     } else {
       console.error('attachmentsManager未找到');
       showToast('error', '附件管理器未初始化');
