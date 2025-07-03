@@ -2,6 +2,13 @@ from datetime import datetime
 from sqlalchemy import String, Integer, ForeignKey, DateTime
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from app.db.base_class import Base
+import enum
+
+
+class AttachmentType(str, enum.Enum):
+    """附件类型枚举"""
+    SALES = "sales"          # 销售附件
+    LOGISTICS = "logistics"  # 后勤附件
 
 
 class Attachment(Base):
@@ -14,6 +21,13 @@ class Attachment(Base):
     sales_record: Mapped["SalesRecord"] = relationship(
         "SalesRecord", 
         back_populates="attachments"
+    )
+    
+    # 附件类型
+    attachment_type: Mapped[str] = mapped_column(
+        String(20),
+        default=AttachmentType.SALES.value,
+        nullable=False
     )
     
     # 文件信息

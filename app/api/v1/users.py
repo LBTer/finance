@@ -28,19 +28,19 @@ async def get_users(
 ) -> List[User]:
     """
     获取用户列表
-    - 超级管理员可以看到所有用户
-    - 高级用户可以看到自己和普通用户
-    - 普通用户只能看到自己
+    - 超级管理员：可以看到所有用户
+    - 高级用户：可以看到所有高级用户和所有普通用户
+    - 普通用户：可以看到所有普通用户
     """
     # 根据用户角色过滤用户列表
-    if current_user.role == UserRole.NORMAL:
-        # 普通用户只能看到自己
-        query = select(User).where(User.id == current_user.id)
-    elif current_user.role == UserRole.SENIOR:
-        # 高级用户可以看到自己和普通用户
+    if current_user.role == UserRole.NORMAL.value:
+        # 普通用户可以看到所有普通用户
+        query = select(User).where(User.role == UserRole.NORMAL.value)
+    elif current_user.role == UserRole.SENIOR.value:
+        # 高级用户可以看到所有高级用户和所有普通用户
         query = select(User).where(
-            (User.id == current_user.id) | 
-            (User.role == UserRole.NORMAL)
+            (User.role == UserRole.SENIOR.value) | 
+            (User.role == UserRole.NORMAL.value)
         )
     else:  # admin
         # 超级管理员可以看到所有用户
@@ -58,9 +58,9 @@ async def get_user_by_id(
 ) -> User:
     """
     获取指定用户信息
-    - 超级管理员可以查看任何用户
-    - 高级用户只能查看自己和普通用户
-    - 普通用户只能查看自己
+    - 超级管理员：可以看到所有用户
+    - 高级用户：可以看到所有高级用户和所有普通用户
+    - 普通用户：可以看到所有普通用户
     """
     # 获取目标用户
     query = select(User).where(User.id == user_id)
@@ -74,15 +74,15 @@ async def get_user_by_id(
         )
     
     # 权限检查
-    if current_user.role == UserRole.NORMAL and user.id != current_user.id:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="您只能查看自己的信息"
-        )
-    if current_user.role == UserRole.SENIOR and user.id != current_user.id and user.role != UserRole.NORMAL:
+    if current_user.role == UserRole.NORMAL.value and user.role != UserRole.NORMAL.value:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="您只能查看普通用户的信息"
+        )
+    if current_user.role == UserRole.SENIOR.value and user.role == UserRole.ADMIN.value:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="您只能查看普通用户和高级用户的信息"
         )
     
     return user

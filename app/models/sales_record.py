@@ -1,15 +1,28 @@
 from datetime import datetime
 from typing import Optional, List
-from sqlalchemy import String, Integer, Float, ForeignKey, Enum as SQLAlchemyEnum, DateTime
+from sqlalchemy import String, Integer, Float, ForeignKey, DateTime
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from app.db.base_class import Base
 import enum
 
-class SalesStatus(str, enum.Enum):
-    """销售记录状态枚举"""
-    PENDING = "pending"      # 待审核
-    APPROVED = "approved"    # 已审核
-    REJECTED = "rejected"    # 已拒绝
+class OrderType(str, enum.Enum):
+    """订单类型枚举"""
+    OVERSEAS = "overseas"    # 海外
+    DOMESTIC = "domestic"    # 国内
+
+class OrderSource(str, enum.Enum):
+    """订单来源枚举"""
+    ALIBABA = "alibaba"      # 阿里
+    DOMESTIC = "domestic"    # 国内
+    EXHIBITION = "exhibition" # 展会
+
+class OrderStage(str, enum.Enum):
+    """订单阶段枚举"""
+    STAGE_1 = "stage_1"  # 第一阶段：初次创建，信息补充阶段
+    STAGE_2 = "stage_2"  # 第二阶段：待后勤审核
+    STAGE_3 = "stage_3"  # 第三阶段：后勤审核通过，信息补充阶段
+    STAGE_4 = "stage_4"  # 第四阶段：待最终审核
+    STAGE_5 = "stage_5"  # 第五阶段：超级/高级用户审核通过
 
 class SalesRecord(Base):
     """销售记录模型 - 美金订单"""
@@ -30,6 +43,16 @@ class SalesRecord(Base):
         foreign_keys=[user_id]
     )
     
+    # 订单基本信息
+    order_type: Mapped[str] = mapped_column(
+        String(20),
+        nullable=False
+    )
+    order_source: Mapped[str] = mapped_column(
+        String(20),
+        nullable=False
+    )
+    
     # 销售信息
     # 产品名称
     product_name: Mapped[str] = mapped_column(String(255), nullable=False)
@@ -46,12 +69,20 @@ class SalesRecord(Base):
     
     
     # 费用信息
-    # 运费（陆内）- 人民币
-    domestic_shipping_fee: Mapped[float] = mapped_column(Float(precision=2), default=0.0)
-    # 运费（海运）- 人民币
-    overseas_shipping_fee: Mapped[float] = mapped_column(Float(precision=2), default=0.0)
-    # 物流公司
-    logistics_company: Mapped[Optional[str]] = mapped_column(String(100))
+    # 运费
+    shipping_fees: Mapped[List["ShippingFees"]] = relationship(
+        "ShippingFees",
+        back_populates="sales_record",
+        cascade="all, delete-orphan"
+    )
+    # 采购
+    procurement: Mapped[List["Procurement"]] = relationship(
+        "Procurement",
+        back_populates="sales_record",
+        cascade="all, delete-orphan"
+    )
+
+    # 退款/退税
     # 退款金额 - 人民币
     refund_amount: Mapped[float] = mapped_column(Float(precision=2), default=0.0)
     # 退税金额 - 人民币
@@ -59,30 +90,50 @@ class SalesRecord(Base):
     # 利润 - 人民币
     profit: Mapped[float] = mapped_column(Float(precision=2), default=0.0)
     
-    # 状态
-    status: Mapped[SalesStatus] = mapped_column(
-        SQLAlchemyEnum(SalesStatus),
-        default=SalesStatus.PENDING,
+    # 订单阶段
+    stage: Mapped[str] = mapped_column(
+        String(20),
+        default=OrderStage.STAGE_1.value,
         nullable=False
     )
     
     # 备注
     remarks: Mapped[Optional[str]] = mapped_column(String(1000))
     
-    # 审核信息
-    approved_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
-    approved_by_id: Mapped[Optional[int]] = mapped_column(ForeignKey("user.id"))
-    approved_by: Mapped[Optional["User"]] = relationship(
+    # 审核信息 - 后勤审核（第二阶段 -> 第三阶段）
+    logistics_approved_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
+    logistics_approved_by_id: Mapped[Optional[int]] = mapped_column(ForeignKey("user.id"))
+    logistics_approved_by: Mapped[Optional["User"]] = relationship(
         "User",
-        foreign_keys=[approved_by_id],
-        remote_side="User.id",
-        backref="approved_sales"
+        foreign_keys=[logistics_approved_by_id],
+        remote_side="User.id"
+    )
+    
+    # 最终审核信息（第四阶段 -> 第五阶段）
+    final_approved_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
+    final_approved_by_id: Mapped[Optional[int]] = mapped_column(ForeignKey("user.id"))
+    final_approved_by: Mapped[Optional["User"]] = relationship(
+        "User",
+        foreign_keys=[final_approved_by_id],
+        remote_side="User.id"
     )
     
     @property
     def total_amount(self) -> float:
         """计算总金额（美元 + 人民币费用，需要根据汇率转换）"""
         return self.total_price + self.domestic_shipping_fee + self.overseas_shipping_fee - self.refund_amount - self.tax_refund
+    
+    @property
+    def sales_attachments(self) -> List["Attachment"]:
+        """获取销售附件"""
+        from app.models.attachment import AttachmentType
+        return [att for att in self.attachments if att.attachment_type == AttachmentType.SALES.value]
+    
+    @property
+    def logistics_attachments(self) -> List["Attachment"]:
+        """获取后勤附件"""
+        from app.models.attachment import AttachmentType
+        return [att for att in self.attachments if att.attachment_type == AttachmentType.LOGISTICS.value]
     
     # 关系：附件
     attachments: Mapped[List["Attachment"]] = relationship(

@@ -1,6 +1,6 @@
 import logging
 from typing import Annotated, List
-from fastapi import APIRouter, Depends, HTTPException, status, UploadFile, File
+from fastapi import APIRouter, Depends, HTTPException, status, UploadFile, File, Form
 from fastapi.responses import FileResponse
 from sqlalchemy import select, delete
 from sqlalchemy.orm import joinedload
@@ -9,7 +9,7 @@ from app.core.dependencies import AsyncSessionDep, get_current_user
 from app.core.permissions import Action, check_sales_record_permissions, get_sales_record
 from app.models.user import User
 from app.models.sales_record import SalesRecord
-from app.models.attachment import Attachment
+from app.models.attachment import Attachment, AttachmentType
 from app.schemas.attachment import AttachmentResponse, AttachmentCreate
 from app.utils.file_handler import file_handler
 from app.utils.logger import get_logger
@@ -37,6 +37,7 @@ MAX_FILE_SIZE = 10 * 1024 * 1024
 async def validate_and_save_attachments(
     files: List[UploadFile],
     sales_record_id: int,
+    attachment_type: str,
     db: AsyncSessionDep,
     user_id: int
 ) -> List[Attachment]:
@@ -45,6 +46,7 @@ async def validate_and_save_attachments(
     
     - **files**: 上传的文件列表
     - **sales_record_id**: 销售记录ID
+    - **attachment_type**: 附件类型 (sales/logistics)
     - **db**: 数据库会话
     - **user_id**: 用户ID（用于日志记录）
     
@@ -57,7 +59,14 @@ async def validate_and_save_attachments(
     if not files:
         return []
     
-    logger.info(f"开始处理附件 - sales_record_id: {sales_record_id}, 文件数量: {len(files)}, user_id: {user_id}")
+    # 验证附件类型
+    if attachment_type not in [AttachmentType.SALES.value, AttachmentType.LOGISTICS.value]:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"无效的附件类型: {attachment_type}"
+        )
+    
+    logger.info(f"开始处理附件 - sales_record_id: {sales_record_id}, 附件类型: {attachment_type}, 文件数量: {len(files)}, user_id: {user_id}")
     
     # 验证所有文件
     for file in files:
@@ -92,16 +101,17 @@ async def validate_and_save_attachments(
                 stored_filename=stored_filename,
                 file_size=file_size,
                 content_type=file.content_type,
-                file_md5=file_md5
+                file_md5=file_md5,
+                attachment_type=attachment_type
             )
             
             attachment = Attachment(**attachment_data.model_dump())
             db.add(attachment)
             attachments.append(attachment)
             
-            logger.info(f"文件保存成功 - 原文件名: {file.filename}, 存储文件名: {stored_filename}, MD5: {file_md5}")
+            logger.info(f"文件保存成功 - 原文件名: {file.filename}, 存储文件名: {stored_filename}, 附件类型: {attachment_type}, MD5: {file_md5}")
         
-        logger.info(f"所有附件处理完成 - sales_record_id: {sales_record_id}, 成功处理 {len(attachments)} 个文件")
+        logger.info(f"所有附件处理完成 - sales_record_id: {sales_record_id}, 附件类型: {attachment_type}, 成功处理 {len(attachments)} 个文件")
         return attachments
     
     except Exception as e:
@@ -136,6 +146,7 @@ async def validate_and_save_attachments(
 @check_sales_record_permissions(Action.UPDATE, lambda db, sales_record_id, **kwargs: get_sales_record(db, sales_record_id, **kwargs))
 async def upload_attachments(
     sales_record_id: int,
+    attachment_type: Annotated[str, Form()],
     files: Annotated[List[UploadFile], File(...)],
     db: AsyncSessionDep,
     current_user: Annotated[User, Depends(get_current_user)]
@@ -144,9 +155,10 @@ async def upload_attachments(
     上传销售记录的附件
     
     - **sales_record_id**: 销售记录ID
+    - **attachment_type**: 附件类型 (sales: 销售附件, logistics: 后勤附件)
     - **files**: 上传的文件列表
     """
-    logger.info(f"开始上传附件 - sales_record_id: {sales_record_id}, 文件数量: {len(files)}, user_id: {current_user.id}")
+    logger.info(f"开始上传附件 - sales_record_id: {sales_record_id}, 附件类型: {attachment_type}, 文件数量: {len(files)}, user_id: {current_user.id}")
     
     # 验证销售记录是否存在
     result = await db.execute(
@@ -162,14 +174,14 @@ async def upload_attachments(
         )
     
     # 调用内部函数处理附件
-    attachments = await validate_and_save_attachments(files, sales_record_id, db, current_user.id)
+    attachments = await validate_and_save_attachments(files, sales_record_id, attachment_type, db, current_user.id)
     
     try:
         await db.commit()
         for attachment in attachments:
             await db.refresh(attachment)
         
-        logger.info(f"附件上传完成 - sales_record_id: {sales_record_id}, 成功上传 {len(attachments)} 个文件")
+        logger.info(f"附件上传完成 - sales_record_id: {sales_record_id}, 附件类型: {attachment_type}, 成功上传 {len(attachments)} 个文件")
         return attachments
     
     except Exception as e:
@@ -202,20 +214,32 @@ async def upload_attachments(
 async def get_attachments(
     sales_record_id: int,
     db: AsyncSessionDep,
-    current_user: Annotated[User, Depends(get_current_user)]
+    current_user: Annotated[User, Depends(get_current_user)],
+    attachment_type: str = None
 ) -> List[Attachment]:
     """
     获取销售记录的附件列表
     
     - **sales_record_id**: 销售记录ID
+    - **attachment_type**: 可选，按附件类型过滤 (sales: 销售附件, logistics: 后勤附件)
     """
-    logger.info(f"获取附件列表 - sales_record_id: {sales_record_id}, user_id: {current_user.id}")
+    logger.info(f"获取附件列表 - sales_record_id: {sales_record_id}, attachment_type: {attachment_type}, user_id: {current_user.id}")
     
-    result = await db.execute(
-        select(Attachment)
-        .where(Attachment.sales_record_id == sales_record_id)
-        .order_by(Attachment.created_at.desc())
-    )
+    # 构建查询条件
+    query = select(Attachment).where(Attachment.sales_record_id == sales_record_id)
+    
+    # 如果指定了附件类型，添加过滤条件
+    if attachment_type:
+        if attachment_type not in [AttachmentType.SALES.value, AttachmentType.LOGISTICS.value]:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"无效的附件类型: {attachment_type}"
+            )
+        query = query.where(Attachment.attachment_type == attachment_type)
+    
+    query = query.order_by(Attachment.created_at.desc())
+    
+    result = await db.execute(query)
     attachments = result.scalars().all()
     
     logger.info(f"查询到 {len(attachments)} 个附件")

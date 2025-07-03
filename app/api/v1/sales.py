@@ -8,8 +8,8 @@ from datetime import datetime, UTC
 from app.core.dependencies import AsyncSessionDep, get_current_user
 from app.core.permissions import Action, check_sales_record_permissions, get_sales_record
 from app.models.user import User, UserRole
-from app.models.sales_record import SalesRecord, SalesStatus
-from app.models.attachment import Attachment
+from app.models.sales_record import OrderSource, SalesRecord, OrderStage, OrderType
+from app.models.attachment import Attachment, AttachmentType
 from app.schemas.sales_record import (
     SalesRecordCreate,
     SalesRecordUpdate,
@@ -68,6 +68,8 @@ async def create_sales_record(
     current_user: Annotated[User, Depends(get_current_user)],
     # 表单字段
     order_number: str = Form(...),
+    order_type: str = Form(...),
+    order_source: str = Form(...),
     product_name: str = Form(...),
     quantity: int = Form(...),
     unit_price: float = Form(...),
@@ -81,12 +83,15 @@ async def create_sales_record(
     category: Optional[str] = Form(None),
     logistics_company: Optional[str] = Form(None),
     remarks: Optional[str] = Form(None),
+    attachment_type: str = Form(AttachmentType.SALES.value),
     files: Optional[List[UploadFile]] = File(None)
 ) -> SalesRecord:
     """
     创建销售记录 (美金订单)
     
     - **order_number**: 订单号（唯一标识）
+    - **order_type**: 订单类型 (overseas/domestic)
+    - **order_source**: 订单来源 (alibaba/domestic/exhibition)
     - **product_name**: 产品名称
     - **category**: 类别（可选）
     - **quantity**: 数量
@@ -99,9 +104,23 @@ async def create_sales_record(
     - **tax_refund**: 退税金额（人民币）
     - **profit**: 利润（人民币）
     - **remarks**: 备注（可选）
+    - **attachment_type**: 附件类型 (sales/logistics)
     - **files**: 附件文件列表（可选）
     """
-    logger.info(f"创建销售记录 - user_id: {current_user.id}, order_number: {order_number}")
+    logger.info(f"创建销售记录 - user_id: {current_user.id}, order_number: {order_number}, order_type: {order_type}")
+    
+    # 验证订单类型
+    if order_type not in [OrderType.OVERSEAS.value, OrderType.DOMESTIC.value]:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"无效的订单类型: {order_type}"
+        )
+    # 验证订单来源
+    if order_source not in [OrderSource.ALIBABA.value, OrderSource.DOMESTIC.value, OrderSource.EXHIBITION.value]:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"无效的订单来源: {order_source}"
+        )
     
     # 检查订单号是否已存在
     existing_record = await db.execute(
@@ -117,6 +136,8 @@ async def create_sales_record(
     # 构建记录数据
     record_data = {
         'order_number': order_number,
+        'order_type': order_type,
+        'order_source': order_source,
         'product_name': product_name,
         'quantity': quantity,
         'unit_price': unit_price,
@@ -131,13 +152,13 @@ async def create_sales_record(
         'logistics_company': logistics_company,
         'remarks': remarks,
         'user_id': current_user.id,
-        'status': SalesStatus.PENDING
+        'stage': OrderStage.STAGE_1.value
     }
     
     logger.debug(f"创建数据: {record_data}")
     
     if files:
-        logger.info(f"包含附件 - 文件数量: {len(files)}")
+        logger.info(f"包含附件 - 文件数量: {len(files)}, 附件类型: {attachment_type}")
     
     # 创建新记录
     record = SalesRecord(**record_data)
@@ -153,7 +174,7 @@ async def create_sales_record(
         # 如果有附件，处理附件上传
         if files:
             logger.info(f"开始处理附件 - record_id: {record.id}")
-            attachments = await validate_and_save_attachments(files, record.id, db, current_user.id)
+            attachments = await validate_and_save_attachments(files, record.id, attachment_type, db, current_user.id)
             
             # 提交附件记录
             await db.commit()
@@ -167,6 +188,8 @@ async def create_sales_record(
             select(SalesRecord)
             .options(
                 joinedload(SalesRecord.user),
+                joinedload(SalesRecord.logistics_approved_by),
+                joinedload(SalesRecord.final_approved_by),
                 joinedload(SalesRecord.attachments)
             )
             .where(SalesRecord.id == record.id)
@@ -217,7 +240,8 @@ async def get_sales_records(
     current_user: Annotated[User, Depends(get_current_user)],
     skip: int = Query(0, ge=0),
     limit: int = Query(10, ge=1, le=100),
-    status: SalesStatus = None,
+    stage: str = None,
+    order_type: str = None,
     search: str = None,
     category: str = None
 ) -> List[SalesRecord]:
@@ -226,28 +250,50 @@ async def get_sales_records(
     
     - **skip**: 跳过的记录数
     - **limit**: 返回的记录数
-    - **status**: 按状态筛选 (pending/approved/rejected)
+    - **stage**: 按阶段筛选 (stage_1/stage_2/stage_3/stage_4/stage_5)
+    - **order_type**: 按订单类型筛选 (alibaba/domestic/exhibition)
     - **search**: 搜索订单号或产品名称
     - **category**: 按类别筛选
     """
     logger.info(f"获取销售记录列表 - user_id: {current_user.id} ({current_user.role}), skip: {skip}, limit: {limit}")
-    logger.debug(f"筛选条件 - status: {status}, search: {search}, category: {category}")
+    logger.debug(f"筛选条件 - stage: {stage}, order_type: {order_type}, search: {search}, category: {category}")
     
     query = select(SalesRecord).options(
         joinedload(SalesRecord.user),
-        joinedload(SalesRecord.approved_by),
+        joinedload(SalesRecord.logistics_approved_by),
+        joinedload(SalesRecord.final_approved_by),
         joinedload(SalesRecord.attachments)
     )
     
     # 根据用户角色过滤
-    if current_user.role == UserRole.NORMAL:
+    if current_user.role == UserRole.NORMAL.value:
         query = query.where(SalesRecord.user_id == current_user.id)
         logger.debug("普通用户权限 - 只显示自己的记录")
     
-    # 状态过滤
-    if status:
-        query = query.where(SalesRecord.status == status)
-        logger.debug(f"状态筛选 - {status}")
+    # 阶段过滤
+    if stage:
+        # 验证阶段值
+        valid_stages = [OrderStage.STAGE_1.value, OrderStage.STAGE_2.value, OrderStage.STAGE_3.value, 
+                       OrderStage.STAGE_4.value, OrderStage.STAGE_5.value]
+        if stage not in valid_stages:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"无效的阶段: {stage}"
+            )
+        query = query.where(SalesRecord.stage == stage)
+        logger.debug(f"阶段筛选 - {stage}")
+    
+    # 订单类型过滤
+    if order_type:
+        # 验证订单类型值
+        valid_types = [OrderType.OVERSEAS.value, OrderType.DOMESTIC.value]
+        if order_type not in valid_types:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"无效的订单类型: {order_type}"
+            )
+        query = query.where(SalesRecord.order_type == order_type)
+        logger.debug(f"订单类型筛选 - {order_type}")
     
     # 类别过滤
     if category:
@@ -293,7 +339,8 @@ async def get_sales_record_by_id(
         select(SalesRecord)
         .options(
             joinedload(SalesRecord.user),
-            joinedload(SalesRecord.approved_by),
+            joinedload(SalesRecord.logistics_approved_by),
+            joinedload(SalesRecord.final_approved_by),
             joinedload(SalesRecord.attachments)
         )
         .where(SalesRecord.id == record_id)
@@ -307,7 +354,7 @@ async def get_sales_record_by_id(
             detail="记录不存在"
         )
     
-    logger.info(f"记录查询成功 - id: {record.id}, order_number: {record.order_number}, status: {record.status}")
+    logger.info(f"记录查询成功 - id: {record.id}, order_number: {record.order_number}, stage: {record.stage}")
     return record
 
 @router.put("/{record_id}", response_model=SalesRecordResponse)
@@ -321,19 +368,12 @@ async def update_sales_record(
     """
     更新销售记录
     
-    - **product_name**: 产品名称
-    - **category**: 类别
-    - **quantity**: 数量
-    - **unit_price**: 单价（美元）
-    - **total_price**: 总价（美元）
-    - **domestic_shipping_fee**: 运费-陆内（人民币）
-    - **overseas_shipping_fee**: 运费-海运（人民币）
-    - **logistics_company**: 物流公司
-    - **refund_amount**: 退款金额（人民币）
-    - **tax_refund**: 退税金额（人民币）
-    - **profit**: 利润（人民币）
-    - **remarks**: 备注
-    - **status**: 状态 (pending/approved/rejected)
+    支持5阶段审核流程：
+    - 第一阶段：初次创建，信息补充阶段
+    - 第二阶段：待后勤审核  
+    - 第三阶段：后勤审核通过，信息补充阶段
+    - 第四阶段：待最终审核
+    - 第五阶段：超级/高级用户审核通过
     """
     logger.info(f"开始更新销售记录 - record_id: {record_id}, current_user: {current_user.id} ({current_user.role})")
     logger.debug(f"更新数据: {record_in.model_dump(exclude_unset=True)}")
@@ -342,7 +382,8 @@ async def update_sales_record(
         select(SalesRecord)
         .options(
             joinedload(SalesRecord.user),
-            joinedload(SalesRecord.approved_by),
+            joinedload(SalesRecord.logistics_approved_by),
+            joinedload(SalesRecord.final_approved_by),
             joinedload(SalesRecord.attachments)
         )
         .where(SalesRecord.id == record_id)
@@ -357,11 +398,8 @@ async def update_sales_record(
         )
     
     # 记录更新前的状态
-    original_status = record.status
-    original_approved_by_id = record.approved_by_id
-    original_approved_at = record.approved_at
-    
-    logger.info(f"记录更新前状态 - status: {original_status}, approved_by_id: {original_approved_by_id}, approved_at: {original_approved_at}")
+    original_stage = record.stage
+    logger.info(f"记录更新前阶段: {original_stage}")
     
     # 确保在此处已加载完所有必要属性
     _ = record.order_number  # 预先加载order_number属性，避免后续延迟加载
@@ -374,34 +412,107 @@ async def update_sales_record(
         logger.debug(f"设置字段 {field}: {getattr(record, field, '未设置')} -> {value}")
         setattr(record, field, value)
     
-    # 记录状态变更信息
-    new_status = getattr(record_in, 'status', None)
-    logger.info(f"状态变更检查 - 原状态: {original_status}, 新状态: {new_status}")
-    
-    # 详细的审核条件检查
-    logger.info("=== 审核条件检查 ===")
-    logger.info(f"1. record_in.status 存在: {record_in.status is not None} (值: {record_in.status})")
-    logger.info(f"2. 状态发生变化: {record_in.status != original_status} ({record_in.status} != {original_status})")
-    logger.info(f"3. 原状态是待审核: {original_status == SalesStatus.PENDING} ({original_status} == {SalesStatus.PENDING})")
-    logger.info(f"4. 新状态是审核状态: {record_in.status in [SalesStatus.APPROVED, SalesStatus.REJECTED] if record_in.status else False}")
-    logger.info(f"5. 用户不是普通用户: {current_user.role != UserRole.NORMAL} ({current_user.role} != {UserRole.NORMAL})")
-    
-    # 如果是审核操作（状态从待审核变为已审核或已拒绝）
-    audit_condition = (record_in.status and 
-                      record_in.status != original_status and 
-                      original_status == SalesStatus.PENDING and
-                      record_in.status in [SalesStatus.APPROVED, SalesStatus.REJECTED] and
-                      current_user.role != UserRole.NORMAL)
-    
-    logger.info(f"审核条件总结果: {audit_condition}")
-    
-    if audit_condition:
-        logger.info(f"执行审核操作 - 设置审核人: {current_user.id}, 审核时间: {datetime.now(UTC)}")
-        record.approved_by_id = current_user.id
-        record.approved_at = datetime.now(UTC)
-        logger.info(f"审核信息已设置 - approved_by_id: {record.approved_by_id}, approved_at: {record.approved_at}")
-    else:
-        logger.info("不满足审核条件，跳过审核信息设置")
+    # 处理阶段变更和审核逻辑
+    new_stage = getattr(record_in, 'stage', None)
+    if new_stage and new_stage != original_stage:
+        logger.info(f"阶段变更: {original_stage} -> {new_stage}")
+        
+        # 验证阶段变更的合法性和权限
+        if new_stage == OrderStage.STAGE_2.value:
+            # 第一阶段 -> 第二阶段：销售人员提交审核
+            if original_stage != OrderStage.STAGE_1.value:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="只能从第一阶段提交到第二阶段"
+                )
+            if not current_user.has_sales_function():
+                raise HTTPException(
+                    status_code=status.HTTP_403_FORBIDDEN,
+                    detail="只有销售人员可以提交审核"
+                )
+            logger.info("销售人员提交到第二阶段审核")
+            
+        elif new_stage == OrderStage.STAGE_3.value:
+            # 第二阶段 -> 第三阶段：后勤人员审核通过
+            if original_stage != OrderStage.STAGE_2.value:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="只能从第二阶段审核到第三阶段"
+                )
+            if not current_user.has_logistics_function():
+                raise HTTPException(
+                    status_code=status.HTTP_403_FORBIDDEN,
+                    detail="只有后勤人员可以进行后勤审核"
+                )
+            # 设置后勤审核信息
+            record.logistics_approved_by_id = current_user.id
+            record.logistics_approved_at = datetime.now(UTC)
+            logger.info(f"后勤人员审核通过 - approved_by: {current_user.id}")
+            
+        elif new_stage == OrderStage.STAGE_4.value:
+            # 第三阶段 -> 第四阶段：后勤人员提交最终审核
+            if original_stage != OrderStage.STAGE_3.value:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="只能从第三阶段提交到第四阶段"
+                )
+            if not current_user.has_logistics_function():
+                raise HTTPException(
+                    status_code=status.HTTP_403_FORBIDDEN,
+                    detail="只有后勤人员可以提交最终审核"
+                )
+            logger.info("后勤人员提交到第四阶段最终审核")
+            
+        elif new_stage == OrderStage.STAGE_5.value:
+            # 第四阶段 -> 第五阶段：超级/高级用户最终审核通过
+            if original_stage != OrderStage.STAGE_4.value:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="只能从第四阶段审核到第五阶段"
+                )
+            if not current_user.can_approve_final():
+                raise HTTPException(
+                    status_code=status.HTTP_403_FORBIDDEN,
+                    detail="只有超级用户或高级用户可以进行最终审核"
+                )
+            # 设置最终审核信息
+            record.final_approved_by_id = current_user.id
+            record.final_approved_at = datetime.now(UTC)
+            logger.info(f"最终审核通过 - approved_by: {current_user.id}")
+            
+        elif new_stage == OrderStage.STAGE_1.value:
+            # 退回到第一阶段：允许多种情况
+            if original_stage == OrderStage.STAGE_2.value:
+                # 销售人员可以将自己的第二阶段订单退回第一阶段
+                if record.user_id != current_user.id and not current_user.has_logistics_function():
+                    raise HTTPException(
+                        status_code=status.HTTP_403_FORBIDDEN,
+                        detail="只有订单创建者或后勤人员可以退回订单"
+                    )
+            elif original_stage == OrderStage.STAGE_3.value or original_stage == OrderStage.STAGE_4.value:
+                # 后勤人员可以将第三、四阶段退回第一阶段
+                if not current_user.has_logistics_function():
+                    raise HTTPException(
+                        status_code=status.HTTP_403_FORBIDDEN,
+                        detail="只有后勤人员可以退回此阶段的订单"
+                    )
+            else:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="无法从当前阶段退回到第一阶段"
+                )
+            # 清除审核信息（如果退回到第一阶段）
+            record.logistics_approved_by_id = None
+            record.logistics_approved_at = None
+            record.final_approved_by_id = None
+            record.final_approved_at = None
+            logger.info("订单退回到第一阶段，清除审核信息")
+            
+        else:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"无效的阶段变更: {original_stage} -> {new_stage}"
+            )
     
     try:
         logger.info("开始提交数据库事务...")
@@ -412,22 +523,26 @@ async def update_sales_record(
         logger.info("记录刷新完成")
         
         # 记录最终状态
-        logger.info(f"更新后状态 - status: {record.status}, approved_by_id: {record.approved_by_id}, approved_at: {record.approved_at}")
+        logger.info(f"更新后阶段: {record.stage}")
         
         # 重新查询以确保关联数据被正确加载
         result = await db.execute(
             select(SalesRecord)
             .options(
                 joinedload(SalesRecord.user),
-                joinedload(SalesRecord.approved_by),
+                joinedload(SalesRecord.logistics_approved_by),
+                joinedload(SalesRecord.final_approved_by),
                 joinedload(SalesRecord.attachments)
             )
             .where(SalesRecord.id == record.id)
         )
         final_record = result.unique().scalar_one()
         
-        logger.info(f"最终查询结果 - status: {final_record.status}, approved_by_id: {final_record.approved_by_id}, approved_at: {final_record.approved_at}")
-        logger.info(f"审核人信息: {final_record.approved_by.full_name if final_record.approved_by else 'None'}")
+        logger.info(f"最终查询结果 - stage: {final_record.stage}")
+        if final_record.logistics_approved_by:
+            logger.info(f"后勤审核人: {final_record.logistics_approved_by.full_name}")
+        if final_record.final_approved_by:
+            logger.info(f"最终审核人: {final_record.final_approved_by.full_name}")
         
         return final_record
     except Exception as e:

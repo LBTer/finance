@@ -1,5 +1,6 @@
 from typing import Optional
 from pydantic import Field
+from app.models.attachment import AttachmentType
 from .base import BaseSchema, TimestampSchema
 
 
@@ -8,6 +9,7 @@ class AttachmentBase(BaseSchema):
     original_filename: str = Field(..., min_length=1, max_length=255)
     file_size: int = Field(..., gt=0)
     content_type: str = Field(..., min_length=1, max_length=100)
+    attachment_type: str = Field(default=AttachmentType.SALES.value, description="附件类型")
 
 
 class AttachmentCreate(AttachmentBase):

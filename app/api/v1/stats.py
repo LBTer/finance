@@ -6,7 +6,7 @@ from datetime import datetime, timedelta, timezone
 
 from app.core.dependencies import AsyncSessionDep, get_current_user
 from app.models.user import User
-from app.models.sales_record import SalesRecord, SalesStatus
+from app.models.sales_record import SalesRecord, OrderStage
 from app.schemas.stats import DashboardStats
 
 router = APIRouter(prefix="/stats", tags=["统计数据"])
@@ -21,22 +21,51 @@ async def get_dashboard_stats(
     
     返回:
         - total_sales: 本月销售总额
-        - approved_orders: 已审核订单数量
-        - pending_orders: 待审核订单数量
-        - rejected_orders: 被拒绝订单数量
+        - total_orders: 历史总最终阶段订单数量
+        - stage_5_orders: 本月最终阶段订单数量
+        - pending_orders: 未完成订单数量
+        - 其他字段设为0（保持schema兼容性）
     """
-    # 获取当前月份的第一天和最后一天
+    # 获取当前月份的第一天
     now = datetime.now(timezone.utc)
     first_day = datetime(now.year, now.month, 1, tzinfo=timezone.utc)
     
-    # 计算下个月的第一天，然后减去1秒得到当月最后一天
+    # 计算下个月的第一天
     if now.month == 12:
         next_month = datetime(now.year + 1, 1, 1, tzinfo=timezone.utc)
     else:
         next_month = datetime(now.year, now.month + 1, 1, tzinfo=timezone.utc)
-    last_day = next_month - timedelta(seconds=1)
     
-    # 查询当月销售总额（使用新的字段结构）
+    # 基础查询条件
+    base_query = select(func.count(SalesRecord.id))
+    if not current_user.is_superuser:
+        # 非管理员只能看到自己的销售记录
+        base_query = base_query.where(SalesRecord.user_id == current_user.id)
+    
+    # 1. 历史总最终阶段订单数量
+    total_completed_query = base_query.where(
+        SalesRecord.stage == OrderStage.STAGE_5.value
+    )
+    total_completed_result = await db.execute(total_completed_query)
+    total_completed_orders = total_completed_result.scalar() or 0
+    
+    # 2. 本月最终阶段订单数量
+    monthly_completed_query = base_query.where(
+        SalesRecord.stage == OrderStage.STAGE_5.value,
+        SalesRecord.created_at >= first_day,
+        SalesRecord.created_at < next_month
+    )
+    monthly_completed_result = await db.execute(monthly_completed_query)
+    monthly_completed_orders = monthly_completed_result.scalar() or 0
+    
+    # 3. 未完成订单数量（所有非最终阶段的订单）
+    pending_query = base_query.where(
+        SalesRecord.stage != OrderStage.STAGE_5.value
+    )
+    pending_result = await db.execute(pending_query)
+    pending_orders = pending_result.scalar() or 0
+    
+    # 计算本月销售总额（仅最终阶段订单）
     total_sales_query = select(
         func.sum(
             SalesRecord.total_price + 
@@ -46,42 +75,27 @@ async def get_dashboard_stats(
             SalesRecord.tax_refund
         ).label("total_sales")
     ).where(
-        SalesRecord.created_at.between(first_day, last_day),
-        SalesRecord.status == SalesStatus.APPROVED
+        SalesRecord.created_at >= first_day,
+        SalesRecord.created_at < next_month,
+        SalesRecord.stage == OrderStage.STAGE_5.value
     )
     
-    if current_user.is_superuser is False:
-        # 非管理员只能看到自己的销售记录
-        total_sales_query = total_sales_query.where(
-            SalesRecord.user_id == current_user.id
-        )
-    
-    # 执行查询获取当月销售总额
     total_sales_result = await db.execute(total_sales_query)
     total_sales = total_sales_result.scalar() or 0
     
-    # 查询各状态订单数量
-    status_counts_query = select(
-        SalesRecord.status,
-        func.count(SalesRecord.id).label("count")
-    ).group_by(
-        SalesRecord.status
-    )
-    
-    if current_user.is_superuser is False:
-        # 非管理员只能看到自己的销售记录
-        status_counts_query = status_counts_query.where(
-            SalesRecord.user_id == current_user.id
-        )
-    
-    # 执行查询获取各状态订单数量
-    status_counts_result = await db.execute(status_counts_query)
-    status_counts = {status.value: count for status, count in status_counts_result.all()}
-    
-    # 构建返回结果
+    # 构建返回结果（使用新的DashboardStats结构）
     return DashboardStats(
         total_sales=float(total_sales),
-        approved_orders=status_counts.get(SalesStatus.APPROVED.value, 0),
-        pending_orders=status_counts.get(SalesStatus.PENDING.value, 0),
-        rejected_orders=status_counts.get(SalesStatus.REJECTED.value, 0)
+        total_orders=total_completed_orders,
+        stage_1_orders=0,
+        stage_2_orders=0,
+        stage_3_orders=0,
+        stage_4_orders=0,
+        stage_5_orders=monthly_completed_orders,
+        alibaba_orders=0,
+        domestic_orders=0,
+        exhibition_orders=0,
+        pending_logistics_review=0,
+        pending_final_review=0,
+        completed_orders=pending_orders
     ) 

@@ -1,11 +1,14 @@
-from .user import User, UserRole
-from .sales_record import SalesRecord, SalesStatus
-from .attachment import Attachment
+from .user import User, UserRole, UserFunction
+from .sales_record import SalesRecord, OrderSource, OrderStage
+from .attachment import Attachment, AttachmentType
 
 __all__ = [
     "User",
     "UserRole",
+    "UserFunction",
     "SalesRecord",
-    "SalesStatus",
-    "Attachment"
+    "OrderSource",
+    "OrderStage",
+    "Attachment",
+    "AttachmentType"
 ] 

@@ -1,8 +1,8 @@
 """Initial migration
 
-Revision ID: 155f145d378f
+Revision ID: 02da9ac70ab0
 Revises: 
-Create Date: 2025-03-20 22:25:06.521303
+Create Date: 2025-07-02 20:05:54.176357
 
 """
 from typing import Sequence, Union
@@ -12,7 +12,7 @@ import sqlalchemy as sa
 
 
 # revision identifiers, used by Alembic.
-revision: str = '155f145d378f'
+revision: str = '02da9ac70ab0'
 down_revision: Union[str, None] = None
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
@@ -27,11 +27,12 @@ def upgrade() -> None:
     sa.Column('email', sa.String(length=255), nullable=True),
     sa.Column('password_hash', sa.String(length=255), nullable=False),
     sa.Column('full_name', sa.String(length=255), nullable=False),
-    sa.Column('role', sa.Enum('NORMAL', 'SENIOR', 'ADMIN', name='userrole'), nullable=False),
+    sa.Column('role', sa.String(length=20), nullable=False),
+    sa.Column('function', sa.String(length=30), nullable=False),
     sa.Column('is_active', sa.Boolean(), nullable=False),
     sa.Column('is_superuser', sa.Boolean(), nullable=False),
-    sa.Column('created_at', sa.DateTime(), nullable=True),
-    sa.Column('updated_at', sa.DateTime(), nullable=True),
+    sa.Column('created_at', sa.DateTime(timezone=True), nullable=True),
+    sa.Column('updated_at', sa.DateTime(timezone=True), nullable=True),
     sa.PrimaryKeyConstraint('id')
     )
     op.create_index(op.f('ix_user_email'), 'user', ['email'], unique=True)
@@ -41,30 +42,57 @@ def upgrade() -> None:
     sa.Column('id', sa.Integer(), nullable=False),
     sa.Column('order_number', sa.String(length=50), nullable=False),
     sa.Column('user_id', sa.Integer(), nullable=False),
+    sa.Column('order_type', sa.String(length=20), nullable=False),
     sa.Column('product_name', sa.String(length=255), nullable=False),
+    sa.Column('category', sa.String(length=100), nullable=True),
     sa.Column('quantity', sa.Integer(), nullable=False),
     sa.Column('unit_price', sa.Float(precision=2), nullable=False),
-    sa.Column('shipping_fee', sa.Float(precision=2), nullable=False),
+    sa.Column('total_price', sa.Float(precision=2), nullable=False),
+    sa.Column('exchange_rate', sa.Float(precision=4), server_default='7.0', nullable=False),
+    sa.Column('domestic_shipping_fee', sa.Float(precision=2), nullable=False),
+    sa.Column('overseas_shipping_fee', sa.Float(precision=2), nullable=False),
+    sa.Column('logistics_company', sa.String(length=100), nullable=True),
     sa.Column('refund_amount', sa.Float(precision=2), nullable=False),
     sa.Column('tax_refund', sa.Float(precision=2), nullable=False),
-    sa.Column('status', sa.Enum('PENDING', 'APPROVED', 'REJECTED', name='salesstatus'), nullable=False),
+    sa.Column('profit', sa.Float(precision=2), nullable=False),
+    sa.Column('stage', sa.String(length=20), nullable=False),
     sa.Column('remarks', sa.String(length=1000), nullable=True),
-    sa.Column('approved_at', sa.DateTime(), nullable=True),
-    sa.Column('approved_by_id', sa.Integer(), nullable=True),
-    sa.Column('created_at', sa.DateTime(), nullable=True),
-    sa.Column('updated_at', sa.DateTime(), nullable=True),
-    sa.ForeignKeyConstraint(['approved_by_id'], ['user.id'], ),
+    sa.Column('logistics_approved_at', sa.DateTime(timezone=True), nullable=True),
+    sa.Column('logistics_approved_by_id', sa.Integer(), nullable=True),
+    sa.Column('final_approved_at', sa.DateTime(timezone=True), nullable=True),
+    sa.Column('final_approved_by_id', sa.Integer(), nullable=True),
+    sa.Column('created_at', sa.DateTime(timezone=True), nullable=True),
+    sa.Column('updated_at', sa.DateTime(timezone=True), nullable=True),
+    sa.ForeignKeyConstraint(['final_approved_by_id'], ['user.id'], ),
+    sa.ForeignKeyConstraint(['logistics_approved_by_id'], ['user.id'], ),
     sa.ForeignKeyConstraint(['user_id'], ['user.id'], ),
     sa.PrimaryKeyConstraint('id')
     )
     op.create_index(op.f('ix_salesrecord_id'), 'salesrecord', ['id'], unique=False)
     op.create_index(op.f('ix_salesrecord_order_number'), 'salesrecord', ['order_number'], unique=True)
+    op.create_table('attachment',
+    sa.Column('id', sa.Integer(), nullable=False),
+    sa.Column('sales_record_id', sa.Integer(), nullable=False),
+    sa.Column('attachment_type', sa.String(length=20), nullable=False),
+    sa.Column('original_filename', sa.String(length=255), nullable=False),
+    sa.Column('stored_filename', sa.String(length=255), nullable=False),
+    sa.Column('file_size', sa.Integer(), nullable=False),
+    sa.Column('content_type', sa.String(length=100), nullable=False),
+    sa.Column('file_md5', sa.String(length=32), nullable=False),
+    sa.Column('created_at', sa.DateTime(timezone=True), nullable=True),
+    sa.Column('updated_at', sa.DateTime(timezone=True), nullable=True),
+    sa.ForeignKeyConstraint(['sales_record_id'], ['salesrecord.id'], ),
+    sa.PrimaryKeyConstraint('id')
+    )
+    op.create_index(op.f('ix_attachment_id'), 'attachment', ['id'], unique=False)
     # ### end Alembic commands ###
 
 
 def downgrade() -> None:
     """Downgrade schema."""
     # ### commands auto generated by Alembic - please adjust! ###
+    op.drop_index(op.f('ix_attachment_id'), table_name='attachment')
+    op.drop_table('attachment')
     op.drop_index(op.f('ix_salesrecord_order_number'), table_name='salesrecord')
     op.drop_index(op.f('ix_salesrecord_id'), table_name='salesrecord')
     op.drop_table('salesrecord')

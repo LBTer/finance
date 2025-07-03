@@ -11,7 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.config import settings
 from app.core.security import create_access_token, get_password_hash, verify_password
 from app.core.dependencies import AsyncSessionDep, get_current_active_superuser, get_current_active_senior_or_admin
-from app.models.user import User, UserRole
+from app.models.user import User, UserFunction, UserRole
 from app.schemas.user import UserCreate, UserResponse, PasswordReset
 from app.utils.validators import Validators
 
@@ -78,18 +78,30 @@ async def register(
     - 高级用户只能创建普通用户
     - 普通用户不能创建用户
     """
+    # 创建的用户类型检查
+    if user_in.role not in [UserRole.NORMAL.value, UserRole.SENIOR.value]:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="无效的用户角色"
+        )
+    if user_in.function not in [UserFunction.SALES.value, UserFunction.LOGISTICS.value, UserFunction.SALES_LOGISTICS.value]:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="无效的用户职能"
+        )
+
     # 权限检查
-    if current_user.role == UserRole.NORMAL:
+    if current_user.role == UserRole.NORMAL.value:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="普通用户不能创建新用户"
         )
-    if current_user.role == UserRole.SENIOR and user_in.role != UserRole.NORMAL:
+    if current_user.role == UserRole.SENIOR.value and user_in.role != UserRole.NORMAL.value:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="高级用户只能创建普通用户"
         )
-    if user_in.role == UserRole.ADMIN:
+    if user_in.role == UserRole.ADMIN.value:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="不能通过接口创建超级管理员"
@@ -132,6 +144,7 @@ async def register(
         password_hash=get_password_hash(user_in.password),
         full_name=user_in.full_name,
         role=user_in.role,
+        function=user_in.function,
         is_active=user_in.is_active,
         is_superuser=False  # 确保通过接口创建的用户不是超级用户
     )
@@ -175,12 +188,12 @@ async def reset_password(
         )
     
     # 权限检查
-    if current_user.role == UserRole.NORMAL and user.id != current_user.id:
+    if current_user.role == UserRole.NORMAL.value and user.id != current_user.id:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="您只能重置自己的密码"
         )
-    if current_user.role == UserRole.SENIOR and user.id != current_user.id and user.role != UserRole.NORMAL:
+    if current_user.role == UserRole.SENIOR.value and user.id != current_user.id and user.role != UserRole.NORMAL.value:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="您只能重置普通用户的密码"

@@ -1,7 +1,7 @@
 from typing import Optional, List
 from datetime import datetime
 from pydantic import Field, field_validator
-from app.models.sales_record import SalesStatus
+from app.models.sales_record import OrderSource, OrderStage
 from .base import BaseSchema, TimestampSchema
 from .user import UserResponse
 from .attachment import AttachmentResponse
@@ -9,6 +9,7 @@ from .attachment import AttachmentResponse
 class SalesRecordBase(BaseSchema):
     """销售记录基础Schema"""
     order_number: str = Field(..., min_length=3, max_length=50)
+    order_type: str = Field(..., description="订单类型")
     product_name: str = Field(..., min_length=1, max_length=255)
     category: Optional[str] = Field(None, max_length=100)
     quantity: int = Field(..., gt=0)
@@ -46,6 +47,7 @@ class SalesRecordCreate(SalesRecordBase):
         json_schema_extra = {
             "example": {
                 "order_number": "ORD20240101001",
+                "order_type": "alibaba",
                 "product_name": "示例产品",
                 "category": "电子产品",
                 "quantity": 1,
@@ -64,6 +66,7 @@ class SalesRecordCreate(SalesRecordBase):
 
 class SalesRecordUpdate(BaseSchema):
     """销售记录更新Schema"""
+    order_type: Optional[str] = Field(None, description="订单类型")
     product_name: Optional[str] = Field(None, min_length=1, max_length=255)
     category: Optional[str] = Field(None, max_length=100)
     quantity: Optional[int] = Field(None, gt=0)
@@ -77,7 +80,7 @@ class SalesRecordUpdate(BaseSchema):
     tax_refund: Optional[float] = Field(None, ge=0, description="退税金额（人民币）")
     profit: Optional[float] = Field(None, description="利润（人民币）")
     remarks: Optional[str] = Field(None, max_length=1000)
-    status: Optional[SalesStatus] = None
+    stage: Optional[str] = Field(None, description="订单阶段")
 
     @field_validator("unit_price", "total_price", "exchange_rate", "domestic_shipping_fee", "overseas_shipping_fee", "refund_amount", "tax_refund", "profit")
     def validate_amount(cls, v: Optional[float]) -> Optional[float]:
@@ -97,9 +100,11 @@ class SalesRecordInDBBase(SalesRecordBase, TimestampSchema):
     """数据库中的销售记录Schema基类"""
     id: int
     user_id: int
-    status: SalesStatus
-    approved_at: Optional[datetime] = None
-    approved_by_id: Optional[int] = None
+    stage: str
+    logistics_approved_at: Optional[datetime] = None
+    logistics_approved_by_id: Optional[int] = None
+    final_approved_at: Optional[datetime] = None
+    final_approved_by_id: Optional[int] = None
 
 class SalesRecordInDB(SalesRecordInDBBase):
     """数据库中的销售记录Schema"""
@@ -108,7 +113,8 @@ class SalesRecordInDB(SalesRecordInDBBase):
 class SalesRecordResponse(SalesRecordInDBBase):
     """销售记录响应Schema"""
     user: UserResponse
-    approved_by: Optional[UserResponse] = None
+    logistics_approved_by: Optional[UserResponse] = None
+    final_approved_by: Optional[UserResponse] = None
     total_amount: float
     attachments: List[AttachmentResponse] = []
 
