@@ -163,4 +163,926 @@ body {
 
 footer {
   padding: 1.5rem;
+}
+
+/* 表格容器优化 */
+.table-responsive {
+  overflow-x: auto;
+  overflow-y: visible !important;
+  min-width: 800px; /* 确保表格有足够的最小宽度 */
+}
+
+/* 当下拉菜单显示时，允许溢出 */
+.table-responsive:has(.dropdown-menu.show) {
+  overflow: visible !important;
+}
+
+/* 确保card-body容器不裁剪下拉菜单 */
+.card-body:has(.dropdown-menu.show) {
+  overflow: visible !important;
+}
+
+/* 表格优化样式 */
+#sales-table {
+  table-layout: fixed;
+  width: 100%;
+  min-width: 800px; /* 确保表格有最小宽度 */
+}
+
+#sales-table th,
+#sales-table td {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  vertical-align: middle;
+  padding: 0.5rem 0.75rem;
+}
+
+/* 为重要列设置最小宽度，防止过度压缩 */
+#sales-table th:nth-child(1),  /* 订单号 */
+#sales-table td:nth-child(1) {
+  min-width: 120px !important;
+  width: 120px !important;
+  max-width: 120px !important;
+}
+
+#sales-table th:nth-child(2),  /* 订单编号 */
+#sales-table td:nth-child(2) {
+  min-width: 140px !important;
+  width: 140px !important;
+  max-width: 140px !important;
+}
+
+#sales-table th:nth-child(3),  /* 产品名称 */
+#sales-table td:nth-child(3) {
+  min-width: 150px !important;
+  width: 150px !important;
+  max-width: 150px !important;
+}
+
+/* 确保重要列在任何情况下都不被压缩 */
+#sales-table th:nth-child(1),
+#sales-table td:nth-child(1),
+#sales-table th:nth-child(2),
+#sales-table td:nth-child(2),
+#sales-table th:nth-child(3),
+#sales-table td:nth-child(3) {
+  flex-shrink: 0 !important;
+  box-sizing: border-box !important;
+  position: relative;
+}
+
+/* 操作列样式优化 */
+#sales-table td:last-child {
+  white-space: normal;
+  overflow: visible !important;
+}
+
+/* 重要列的强制宽度设置 */
+#sales-table colgroup col:nth-child(1) { width: 120px; }
+#sales-table colgroup col:nth-child(2) { width: 140px; }
+#sales-table colgroup col:nth-child(3) { width: 150px; }
+
+/* 下拉菜单优化 */
+.dropdown-menu {
+  min-width: 150px;
+  z-index: 999999 !important;
+  position: absolute !important;
+  box-shadow: 0 0.5rem 1rem rgba(0, 0, 0, 0.15) !important;
+  border: 1px solid rgba(0, 0, 0, 0.15) !important;
+  background-color: #fff !important;
+  margin: 0 !important;
+}
+
+.dropdown {
+  position: relative !important;
+}
+
+.dropdown-menu.show {
+  z-index: 999999 !important;
+  display: block !important;
+  position: absolute !important;
+  top: 100% !important;
+  left: auto !important;
+  right: 0 !important;
+  transform: none !important;
+}
+
+/* 确保下拉菜单在表格中正确显示 */
+#sales-table .dropdown {
+  position: relative !important;
+}
+
+#sales-table .dropdown-menu {
+  position: absolute !important;
+  z-index: 999999 !important;
+  min-width: 160px;
+  top: 100% !important;
+  right: 0 !important;
+  left: auto !important;
+}
+
+.dropdown-item {
+  padding: 0.5rem 1rem;
+  font-size: 0.875rem;
+  white-space: nowrap;
+}
+
+.dropdown-item i {
+  margin-right: 0.5rem;
+  width: 16px;
+  text-align: center;
+}
+
+.dropdown-item:hover {
+  background-color: #f8f9fa;
+}
+
+.dropdown-item.text-danger:hover {
+  background-color: #f8d7da;
+  color: #721c24 !important;
+}
+
+/* 按钮间距优化 */
+.btn-sm {
+  padding: 0.25rem 0.5rem;
+  font-size: 0.75rem;
+}
+
+/* 表格响应式优化 */
+@media (max-width: 768px) {
+  .table-responsive {
+    min-width: 600px; /* 移动端最小宽度调整 */
+  }
+  
+  #sales-table {
+    min-width: 600px; /* 移动端表格最小宽度 */
+  }
+  
+  /* 移动端colgroup列宽度设置 */
+  #sales-table colgroup col:nth-child(1) { width: 100px; }
+  #sales-table colgroup col:nth-child(2) { width: 120px; }
+  #sales-table colgroup col:nth-child(3) { width: 120px; }
+  
+  #sales-table th,
+  #sales-table td {
+    font-size: 0.8rem;
+    padding: 0.3rem 0.5rem;
+  }
+  
+  /* 移动端重要列最小宽度优化 */
+  #sales-table th:nth-child(1),  /* 订单号 */
+  #sales-table td:nth-child(1) {
+    min-width: 100px !important;
+    width: 100px !important;
+    max-width: 100px !important;
+  }
+  
+  #sales-table th:nth-child(2),  /* 订单编号 */
+  #sales-table td:nth-child(2) {
+    min-width: 120px !important;
+    width: 120px !important;
+    max-width: 120px !important;
+  }
+  
+  #sales-table th:nth-child(3),  /* 产品名称 */
+  #sales-table td:nth-child(3) {
+    min-width: 120px !important;
+    width: 120px !important;
+    max-width: 120px !important;
+  }
+  
+  /* 确保移动端重要列也不被压缩 */
+  #sales-table th:nth-child(1),
+  #sales-table td:nth-child(1),
+  #sales-table th:nth-child(2),
+  #sales-table td:nth-child(2),
+  #sales-table th:nth-child(3),
+  #sales-table td:nth-child(3) {
+    flex-shrink: 0 !important;
+    position: relative;
+  }
+  
+  .btn-sm {
+    padding: 0.2rem 0.4rem;
+    font-size: 0.7rem;
+  }
+}
+
+/* 状态标签样式 */
+.text-muted.small {
+  font-size: 0.75rem;
+  line-height: 1.2;
+}
+
+/* 额外的下拉菜单修复 */
+.dropdown-menu {
+  will-change: transform;
+}
+
+/* 确保下拉菜单在所有情况下都能正确显示 */
+body:has(.dropdown-menu.show) .table-responsive {
+  overflow: visible !important;
+}
+
+body:has(.dropdown-menu.show) .card-body {
+  overflow: visible !important;
+}
+
+/* 提高下拉菜单的优先级 */
+.dropdown-menu.show {
+  display: block !important;
+  opacity: 1 !important;
+  visibility: visible !important;
+  z-index: 999999 !important;
+}
+
+/* 运费和采购表格样式 */
+#fees-table, #procurement-table {
+  table-layout: fixed;
+  width: 100%;
+}
+
+#fees-table th, #fees-table td,
+#procurement-table th, #procurement-table td {
+  word-wrap: break-word;
+  vertical-align: middle;
+  padding: 0.5rem;
+}
+
+/* 需要限制文本显示的列 */
+#fees-table td:nth-child(5), /* 物流公司列 */
+#fees-table td:nth-child(6), /* 备注列 */
+#procurement-table td:nth-child(2), /* 供应单位列 */
+#procurement-table td:nth-child(3), /* 采购事项列 */
+#procurement-table td:nth-child(7) { /* 备注列 */
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 0;
+}
+
+/* 所有列都左对齐 - 移除特殊对齐样式 */ 
+
+/* 仪表盘样式 */
+.border-left-primary {
+  border-left: 0.25rem solid #4e73df !important;
+}
+
+.border-left-success {
+  border-left: 0.25rem solid #1cc88a !important;
+}
+
+.border-left-info {
+  border-left: 0.25rem solid #36b9cc !important;
+}
+
+.border-left-warning {
+  border-left: 0.25rem solid #f6c23e !important;
+}
+
+.text-gray-800 {
+  color: #5a5c69 !important;
+}
+
+.text-gray-300 {
+  color: #dddfeb !important;
+}
+
+.font-weight-bold {
+  font-weight: 700 !important;
+}
+
+/* 图表容器样式 */
+.chart-container {
+  position: relative;
+  height: 300px;
+  width: 100%;
+}
+
+.chart-container canvas {
+  max-height: 300px;
+}
+
+/* 状态徽章样式 */
+.badge {
+  font-size: 0.75rem;
+  padding: 0.375rem 0.75rem;
+  border-radius: 0.35rem;
+}
+
+/* 卡片阴影 */
+.shadow {
+  box-shadow: 0 0.15rem 1.75rem 0 rgba(58, 59, 69, 0.15) !important;
+}
+
+/* 响应式图表 */
+@media (max-width: 768px) {
+  .chart-container {
+    height: 250px;
+  }
+}
+
+/* 表格样式优化 */
+.table-bordered th,
+.table-bordered td {
+  border: 1px solid #e3e6f0;
+}
+
+.table-bordered thead th {
+  border-bottom-width: 2px;
+  background-color: #f8f9fc;
+  font-weight: 600;
+}
+
+/* 表格行悬停效果 */
+.table tbody tr:hover {
+  background-color: #f8f9fc;
+  cursor: pointer;
+}
+
+/* 统计卡片动画 */
+.card:hover {
+  transform: translateY(-2px);
+  transition: transform 0.2s ease-in-out;
+}
+
+/* 图标样式 */
+.fa-2x {
+  font-size: 2em;
+}
+
+/* 文本大小 */
+.text-xs {
+  font-size: 0.7rem;
+}
+
+.text-uppercase {
+  text-transform: uppercase;
+}
+
+.h5 {
+  font-size: 1.25rem;
+}
+
+.h3 {
+  font-size: 1.75rem;
+}
+
+.h6 {
+  font-size: 1rem;
+}
+
+/* 间距 */
+.mb-0 {
+  margin-bottom: 0 !important;
+}
+
+.mb-1 {
+  margin-bottom: 0.25rem !important;
+}
+
+.mb-4 {
+  margin-bottom: 1.5rem !important;
+}
+
+.mr-2 {
+  margin-right: 0.5rem !important;
+}
+
+.py-2 {
+  padding-top: 0.5rem !important;
+  padding-bottom: 0.5rem !important;
+}
+
+.py-3 {
+  padding-top: 1rem !important;
+  padding-bottom: 1rem !important;
+}
+
+/* 无边距的行 */
+.no-gutters {
+  margin-left: 0;
+  margin-right: 0;
+}
+
+.no-gutters > .col,
+.no-gutters > [class*="col-"] {
+  padding-left: 0;
+  padding-right: 0;
+}
+
+/* 卡片头部样式 */
+.card-header {
+  background-color: #f8f9fc;
+  border-bottom: 1px solid #e3e6f0;
+}
+
+/* 主要文本颜色 */
+.text-primary {
+  color: #4e73df !important;
+}
+
+/* 工作流程帮助系统样式 */
+.workflow-help-container {
+    position: fixed;
+    top: 50%;
+    left: 0;
+    transform: translateY(-50%);
+    z-index: 1200; /* 保证在sidebar之上 */
+    pointer-events: none; /* 容器本身不响应事件，按钮可响应 */
+}
+
+.workflow-help-btn {
+    writing-mode: vertical-lr;
+    text-orientation: mixed;
+    padding: 12px 8px;
+    border-radius: 0 15px 15px 0;
+    box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+    transition: all 0.3s ease;
+    background: linear-gradient(45deg, #17a2b8, #20c997);
+    color: white;
+    border: none;
+    min-height: 100px;
+    pointer-events: auto; /* 按钮可点击 */
+}
+
+.workflow-help-btn:hover {
+    transform: translateX(5px);
+    box-shadow: 0 4px 15px rgba(0, 0, 0, 0.2);
+    background: linear-gradient(45deg, #138496, #1a9668);
+    color: white;
+}
+
+.workflow-help-btn .help-btn-text {
+    font-size: 0.9rem;
+    font-weight: 500;
+    margin-left: 8px;
+}
+
+.workflow-help-btn .fas {
+    margin-bottom: 5px;
+}
+
+/* 工作流程帮助内容样式 */
+.workflow-help-content {
+    max-height: 70vh;
+    overflow-y: auto;
+    padding: 15px;
+}
+
+.workflow-help-content .section {
+    background: #f8f9fa;
+    border-radius: 8px;
+    padding: 20px;
+    margin-bottom: 20px;
+    border-left: 4px solid #007bff;
+}
+
+.workflow-help-content .section-title {
+    color: #495057;
+    font-weight: 600;
+    margin-bottom: 15px;
+    font-size: 1.1rem;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.workflow-help-content .section-content {
+    color: #6c757d;
+    line-height: 1.6;
+}
+
+/* 用户类型卡片样式 */
+.user-type-card {
+    background: white;
+    border-radius: 8px;
+    box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1);
+    margin-bottom: 15px;
+    border: 1px solid #dee2e6;
+}
+
+.user-type-card .card-header {
+    background: #f8f9fa;
+    border-bottom: 1px solid #dee2e6;
+    padding: 12px 15px;
+    font-weight: 600;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.user-type-card .card-body {
+    padding: 15px;
+}
+
+.permission-list {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+}
+
+.permission-list li {
+    padding: 5px 0;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.permission-list li .fas {
+    width: 12px;
+}
+
+/* 阶段卡片样式 */
+.stages-container {
+    display: flex;
+    flex-direction: column;
+    gap: 15px;
+}
+
+.stage-card {
+    background: white;
+    border-radius: 8px;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+    border: 1px solid #dee2e6;
+    transition: transform 0.2s ease;
+}
+
+.stage-card:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+}
+
+.stage-card .stage-header {
+    background: linear-gradient(45deg, #007bff, #0056b3);
+    color: white;
+    padding: 12px 20px;
+    border-radius: 8px 8px 0 0;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+}
+
+.stage-card.stage-1 .stage-header {
+    background: linear-gradient(45deg, #28a745, #1e7e34);
+}
+
+.stage-card.stage-2 .stage-header {
+    background: linear-gradient(45deg, #ffc107, #d39e00);
+}
+
+.stage-card.stage-3 .stage-header {
+    background: linear-gradient(45deg, #17a2b8, #117a8b);
+}
+
+.stage-card.stage-4 .stage-header {
+    background: linear-gradient(45deg, #dc3545, #c82333);
+}
+
+.stage-card.stage-5 .stage-header {
+    background: linear-gradient(45deg, #6f42c1, #5a32a3);
+}
+
+.stage-number {
+    background: rgba(255, 255, 255, 0.2);
+    width: 30px;
+    height: 30px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-weight: bold;
+    font-size: 1.1rem;
+}
+
+.stage-title {
+    font-size: 1.1rem;
+    font-weight: 600;
+}
+
+.stage-content {
+    padding: 20px;
+    color: #495057;
+}
+
+.stage-content ul {
+    margin: 10px 0;
+    padding-left: 20px;
+}
+
+.stage-content li {
+    margin: 5px 0;
+    line-height: 1.5;
+}
+
+/* 流程图样式 */
+.workflow-diagram {
+    background: white;
+    border-radius: 8px;
+    padding: 30px;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+    border: 1px solid #dee2e6;
+}
+
+.diagram-container {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-wrap: wrap;
+    gap: 20px;
+    margin-bottom: 30px;
+}
+
+.stage-box {
+    background: white;
+    border-radius: 8px;
+    padding: 15px;
+    text-align: center;
+    min-width: 120px;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+    border: 2px solid #dee2e6;
+}
+
+.stage-1-box {
+    border-color: #28a745;
+}
+
+.stage-2-box {
+    border-color: #ffc107;
+}
+
+.stage-3-box {
+    border-color: #17a2b8;
+}
+
+.stage-4-box {
+    border-color: #dc3545;
+}
+
+.stage-5-box {
+    border-color: #6f42c1;
+}
+
+.stage-icon {
+    width: 40px;
+    height: 40px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-weight: bold;
+    font-size: 1.2rem;
+    margin: 0 auto 10px;
+    color: white;
+}
+
+.stage-1-box .stage-icon {
+    background: #28a745;
+}
+
+.stage-2-box .stage-icon {
+    background: #ffc107;
+}
+
+.stage-3-box .stage-icon {
+    background: #17a2b8;
+}
+
+.stage-4-box .stage-icon {
+    background: #dc3545;
+}
+
+.stage-5-box .stage-icon {
+    background: #6f42c1;
+}
+
+.stage-name {
+    font-weight: 600;
+    margin-bottom: 5px;
+    color: #495057;
+}
+
+.stage-status {
+    font-size: 0.85rem;
+    color: #6c757d;
+}
+
+.arrow-container {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    margin: 0 10px;
+}
+
+.arrow-line {
+    width: 2px;
+    height: 20px;
+    background: #007bff;
+    margin-bottom: 5px;
+}
+
+.arrow-text {
+    font-size: 0.8rem;
+    color: #007bff;
+    text-align: center;
+    margin-bottom: 5px;
+    max-width: 80px;
+}
+
+.arrow-head {
+    font-size: 1.5rem;
+    color: #007bff;
+    font-weight: bold;
+}
+
+/* 撤回流程样式 */
+.withdrawal-flows {
+    background: #f8f9fa;
+    border-radius: 8px;
+    padding: 20px;
+    border-left: 4px solid #ffc107;
+}
+
+.withdrawal-title {
+    font-weight: 600;
+    margin-bottom: 15px;
+    color: #495057;
+    font-size: 1.05rem;
+}
+
+.withdrawal-item {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 10px;
+    color: #6c757d;
+}
+
+.withdrawal-arrow {
+    color: #ffc107;
+    font-size: 1.2rem;
+    font-weight: bold;
+}
+
+.withdrawal-text {
+    font-size: 0.9rem;
+}
+
+/* 附件类型卡片样式 */
+.attachment-type-card {
+    background: white;
+    border-radius: 8px;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+    border: 1px solid #dee2e6;
+    margin-bottom: 15px;
+}
+
+.attachment-type-card .card-header {
+    padding: 12px 15px;
+    font-weight: 600;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    border-bottom: 1px solid #dee2e6;
+}
+
+.attachment-type-card .card-header.sales-attachment {
+    background: linear-gradient(45deg, #007bff, #0056b3);
+    color: white;
+}
+
+.attachment-type-card .card-header.logistics-attachment {
+    background: linear-gradient(45deg, #28a745, #1e7e34);
+    color: white;
+}
+
+.attachment-type-card .card-body {
+    padding: 15px;
+}
+
+.attachment-type-card ul {
+    margin: 10px 0;
+    padding-left: 20px;
+}
+
+.attachment-type-card li {
+    margin: 5px 0;
+    line-height: 1.5;
+}
+
+/* 操作提示样式 */
+.tips-container {
+    background: white;
+    border-radius: 8px;
+    padding: 20px;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+    border: 1px solid #dee2e6;
+}
+
+.tip-item {
+    display: flex;
+    align-items: flex-start;
+    gap: 12px;
+    margin-bottom: 15px;
+    padding: 10px;
+    background: #f8f9fa;
+    border-radius: 6px;
+    border-left: 3px solid #007bff;
+}
+
+.tip-item .fas {
+    margin-top: 2px;
+    width: 16px;
+}
+
+.tip-item span {
+    flex: 1;
+    line-height: 1.5;
+    color: #495057;
+}
+
+/* 紫色文本 */
+.text-purple {
+    color: #6f42c1 !important;
+}
+
+/* 响应式设计 */
+@media (max-width: 768px) {
+    .workflow-help-container {
+        left: 10px;
+    }
+    
+    .workflow-help-btn {
+        min-height: 80px;
+        padding: 10px 6px;
+    }
+    
+    .workflow-help-btn .help-btn-text {
+        font-size: 0.8rem;
+    }
+    
+    .workflow-help-content {
+        max-height: 60vh;
+    }
+    
+    .diagram-container {
+        flex-direction: column;
+        gap: 15px;
+    }
+    
+    .arrow-container {
+        transform: rotate(90deg);
+        margin: 10px 0;
+    }
+    
+    .stage-box {
+        min-width: 100px;
+    }
+} 
+
+/* 阶段卡片样式（手风琴折叠） */
+.stage-card .stage-header {
+    cursor: pointer;
+    user-select: none;
+    transition: background 0.2s;
+}
+.stage-card .stage-header:hover {
+    filter: brightness(0.95);
+}
+.stage-header .stage-chevron {
+    transition: transform 0.3s;
+}
+.stage-content.collapse {
+    display: none;
+    transition: all 0.3s;
+}
+.stage-content.collapse.show {
+    display: block;
+    animation: fadeInAccordion 0.3s;
+}
+@keyframes fadeInAccordion {
+    from { opacity: 0; transform: translateY(-10px); }
+    to { opacity: 1; transform: translateY(0); }
+} 
+
+.stage-label {
+    font-weight: bold;
+    padding: 2px 8px;
+    border-radius: 12px;
+    margin: 0 4px;
+    font-size: 1rem;
+    display: inline-block;
+    white-space: nowrap;
+    vertical-align: middle;
+}
+.stage-label-1 { background: #28a745; color: #fff; }
+.stage-label-2 { background: #ffc107; color: #fff; }
+.stage-label-3 { background: #17a2b8; color: #fff; }
+.stage-label-4 { background: #dc3545; color: #fff; }
+.stage-label-5 { background: #6f42c1; color: #fff; } 
+
+.user-type-card .card-body, .permission-list {
+    word-break: keep-all;
+    white-space: normal;
 } 

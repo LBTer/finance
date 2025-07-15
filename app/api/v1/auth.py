@@ -12,7 +12,7 @@ from app.core.config import settings
 from app.core.security import create_access_token, get_password_hash, verify_password
 from app.core.dependencies import AsyncSessionDep, get_current_active_superuser, get_current_active_senior_or_admin
 from app.models.user import User, UserFunction, UserRole
-from app.schemas.user import UserCreate, UserResponse, PasswordReset
+from app.schemas.user import UserCreate, UserResponse, PasswordReset, UserInfoUpdate
 from app.utils.validators import Validators
 
 router = APIRouter(prefix="/auth", tags=["认证"])
@@ -204,3 +204,72 @@ async def reset_password(
     await db.commit()
     
     return {"message": "密码重置成功"} 
+
+@router.put("/users/{user_id}/info", response_model=UserResponse)
+async def update_user_info(
+    user_id: int,
+    user_update: UserInfoUpdate,
+    db: AsyncSessionDep,
+    current_user: Annotated[User, Depends(get_current_active_superuser)]
+) -> User:
+    """
+    修改用户信息
+    - 只有超级管理员可以使用此接口
+    - 可以修改用户的姓名、邮箱、角色、职能、启用状态
+    - 用户角色只能修改成普通用户/高级用户
+    """
+    # 查找要修改的用户
+    result = await db.execute(
+        select(User).where(User.id == user_id)
+    )
+    user = result.scalar_one_or_none()
+    
+    if not user:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="用户不存在"
+        )
+    
+    # 验证角色
+    if user_update.role is not None:
+        if user_update.role not in [UserRole.NORMAL.value, UserRole.SENIOR.value]:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="用户角色只能修改为普通用户或高级用户"
+            )
+    
+    # 验证职能
+    if user_update.function is not None:
+        if user_update.function not in [UserFunction.SALES.value, UserFunction.LOGISTICS.value, UserFunction.SALES_LOGISTICS.value]:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="无效的用户职能"
+            )
+    
+    # 验证邮箱是否已被其他用户使用
+    if user_update.email is not None:
+        existing_user_result = await db.execute(
+            select(User).where(User.email == user_update.email, User.id != user_id)
+        )
+        if existing_user_result.scalar_one_or_none():
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="该邮箱已被其他用户使用"
+            )
+    
+    # 更新用户信息
+    if user_update.full_name is not None:
+        user.full_name = user_update.full_name
+    if user_update.email is not None:
+        user.email = user_update.email
+    if user_update.role is not None:
+        user.role = user_update.role
+    if user_update.function is not None:
+        user.function = user_update.function
+    if user_update.is_active is not None:
+        user.is_active = user_update.is_active
+    
+    await db.commit()
+    await db.refresh(user)
+    
+    return user 

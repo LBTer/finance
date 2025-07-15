@@ -15,7 +15,7 @@ ShippingFees 运费表，和订单是多对一关系，一个订单可以有多�
 class ShippingFees(Base):
     id: Mapped[int] = mapped_column(primary_key=True, index=True)
     # 订单id
-    sales_record_id: Mapped[int] = mapped_column(ForeignKey("sales_record.id"), nullable=False)
+    sales_record_id: Mapped[int] = mapped_column(ForeignKey("salesrecord.id"), nullable=False)
     sales_record: Mapped["SalesRecord"] = relationship(
         "SalesRecord", 
         back_populates="shipping_fees"

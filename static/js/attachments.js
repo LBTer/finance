@@ -176,16 +176,30 @@ class AttachmentsManager {
     }
 
     // 加载附件列表
-    async loadAttachments(recordId, canEdit = false, isEditMode = false) {
+    async loadAttachments(recordId, canEdit = false, isEditMode = false, salesRecord = null) {
         console.log('loadAttachments - recordId:', recordId, 'canEdit:', canEdit, 'isEditMode:', isEditMode);
         
         this.currentRecordId = recordId;
         this.canEdit = canEdit;
         this.isEditMode = isEditMode; // 保存当前模式
+        this.salesRecord = salesRecord; // 保存销售记录信息
 
         try {
             const token = getToken();
             console.log('使用token:', token ? '已获取' : '未获取');
+            
+            // 如果没有提供销售记录信息，先获取销售记录详情
+            if (!this.salesRecord) {
+                const recordResponse = await fetch(`/api/v1/sales/${recordId}`, {
+                    headers: {
+                        'Authorization': `Bearer ${token}`
+                    }
+                });
+                
+                if (recordResponse.ok) {
+                    this.salesRecord = await recordResponse.json();
+                }
+            }
             
             const response = await fetch(`/api/v1/attachments/${recordId}`, {
                 headers: {
@@ -236,10 +250,34 @@ class AttachmentsManager {
             return;
         }
         
-        // 根据权限显示上传区域
+        // 根据权限和阶段显示上传区域
         if (uploadArea) {
-            if (this.canEdit) {
-                uploadArea.style.display = 'block';
+            if (this.canEdit && this.salesRecord) {
+                const stage = this.salesRecord.stage;
+                const canUpload = stage === 'stage_1' || stage === 'stage_3';
+                
+                if (canUpload) {
+                    uploadArea.style.display = 'block';
+                    
+                    // 显示附件类型提示
+                    let attachmentTypeHint = '';
+                    if (stage === 'stage_1') {
+                        attachmentTypeHint = '<div class="alert alert-info small mt-2 mb-0"><i class="bi bi-info-circle"></i> 当前阶段可上传<strong>销售附件</strong></div>';
+                    } else if (stage === 'stage_3') {
+                        attachmentTypeHint = '<div class="alert alert-success small mt-2 mb-0"><i class="bi bi-info-circle"></i> 当前阶段可上传<strong>后勤附件</strong></div>';
+                    }
+                    
+                    // 查找并更新附件类型提示
+                    let hintContainer = uploadArea.querySelector('.attachment-type-hint');
+                    if (!hintContainer) {
+                        hintContainer = document.createElement('div');
+                        hintContainer.className = 'attachment-type-hint';
+                        uploadArea.appendChild(hintContainer);
+                    }
+                    hintContainer.innerHTML = attachmentTypeHint;
+                } else {
+                    uploadArea.style.display = 'none';
+                }
             } else {
                 uploadArea.style.display = 'none';
             }
@@ -273,6 +311,28 @@ class AttachmentsManager {
             const fileIcon = this.getFileIcon(attachment.content_type);
             const createdAt = new Date(attachment.created_at).toLocaleString('zh-CN');
             
+            // 根据附件类型和阶段决定是否可以删除
+            let canDeleteAttachment = false;
+            let deleteHintText = '';
+            
+            if (this.canEdit && this.salesRecord) {
+                const stage = this.salesRecord.stage;
+                const attachmentType = attachment.attachment_type;
+                
+                // 销售附件：只能在阶段一删除
+                if (attachmentType === 'sales' && stage === 'stage_1') {
+                    canDeleteAttachment = true;
+                } else if (attachmentType === 'sales' && stage === 'stage_3') {
+                    deleteHintText = '第三阶段不可删除销售附件';
+                }
+                // 后勤附件：只能在阶段三删除
+                else if (attachmentType === 'logistics' && stage === 'stage_3') {
+                    canDeleteAttachment = true;
+                } else if (attachmentType === 'logistics' && stage === 'stage_1') {
+                    deleteHintText = '第一阶段不可删除后勤附件';
+                }
+            }
+            
             const attachmentCard = document.createElement('div');
             // 使用全宽长条形卡片
             attachmentCard.className = 'col-12 mb-2';
@@ -288,6 +348,11 @@ class AttachmentsManager {
                                 <div class="d-flex gap-3">
                                     <small class="text-muted">${fileSize}</small>
                                     <small class="text-muted">${createdAt}</small>
+                                    <small class="text-muted">
+                                        <span class="badge ${attachment.attachment_type === 'sales' ? 'bg-info' : 'bg-success'}">
+                                            ${attachment.attachment_type === 'sales' ? '销售附件' : '后勤附件'}
+                                        </span>
+                                    </small>
                                 </div>
                             </div>
                         </div>
@@ -296,11 +361,16 @@ class AttachmentsManager {
                                     data-id="${attachment.id}" title="下载">
                                 <i class="bi bi-download"></i> 下载
                             </button>
-                            ${this.canEdit ? `
+                            ${canDeleteAttachment ? `
                             <button type="button" class="btn btn-sm btn-outline-danger delete-attachment" 
                                     data-id="${attachment.id}" data-filename="${attachment.original_filename}" title="删除">
                                 <i class="bi bi-trash"></i> 删除
                             </button>
+                            ` : ''}
+                            ${deleteHintText ? `
+                            <small class="text-muted align-self-center" title="${deleteHintText}">
+                                <i class="bi bi-lock"></i>
+                            </small>
                             ` : ''}
                         </div>
                     </div>
@@ -321,8 +391,19 @@ class AttachmentsManager {
             return;
         }
 
-        if (!this.currentRecordId) {
-            showToast('error', '无法确定销售记录ID');
+        if (!this.currentRecordId || !this.salesRecord) {
+            showToast('error', '无法确定销售记录信息');
+            return;
+        }
+
+        // 根据阶段确定附件类型
+        let attachmentType;
+        if (this.salesRecord.stage === 'stage_1') {
+            attachmentType = 'sales';
+        } else if (this.salesRecord.stage === 'stage_3') {
+            attachmentType = 'logistics';
+        } else {
+            showToast('error', '当前阶段不允许上传附件');
             return;
         }
 
@@ -330,6 +411,7 @@ class AttachmentsManager {
         Array.from(files).forEach(file => {
             formData.append('files', file);
         });
+        formData.append('attachment_type', attachmentType);
 
         try {
             showLoading();
@@ -348,13 +430,23 @@ class AttachmentsManager {
             }
 
             const result = await response.json();
-            showToast('success', `成功上传 ${result.length} 个文件`);
+            const typeText = attachmentType === 'sales' ? '销售附件' : '后勤附件';
+            showToast('success', `成功上传 ${result.length} 个${typeText}`);
             
             // 清空文件选择
             fileInput.value = '';
             
             // 重新加载附件列表
-            await this.loadAttachments(this.currentRecordId, this.canEdit, false); // 查看模式上传
+            await this.loadAttachments(this.currentRecordId, this.canEdit, false, this.salesRecord); // 查看模式上传
+            
+            // 更新主列表中的附件数量显示
+            this.updateMainListAttachmentCount(this.currentRecordId);
+            
+            // 如果当前页面是销售记录列表页面，重新加载列表数据以确保一致性
+            if (typeof loadSalesRecords === 'function') {
+                await loadSalesRecords();
+                console.log('销售记录列表已刷新');
+            }
 
         } catch (error) {
             console.error('上传附件失败:', error);
@@ -374,8 +466,19 @@ class AttachmentsManager {
             return;
         }
 
-        if (!this.currentRecordId) {
-            showToast('error', '无法确定销售记录ID');
+        if (!this.currentRecordId || !this.salesRecord) {
+            showToast('error', '无法确定销售记录信息');
+            return;
+        }
+
+        // 根据阶段确定附件类型
+        let attachmentType;
+        if (this.salesRecord.stage === 'stage_1') {
+            attachmentType = 'sales';
+        } else if (this.salesRecord.stage === 'stage_3') {
+            attachmentType = 'logistics';
+        } else {
+            showToast('error', '当前阶段不允许上传附件');
             return;
         }
 
@@ -383,6 +486,7 @@ class AttachmentsManager {
         Array.from(files).forEach(file => {
             formData.append('files', file);
         });
+        formData.append('attachment_type', attachmentType);
 
         try {
             showLoading();
@@ -401,16 +505,23 @@ class AttachmentsManager {
             }
 
             const result = await response.json();
-            showToast('success', `成功上传 ${result.length} 个文件`);
+            const typeText = attachmentType === 'sales' ? '销售附件' : '后勤附件';
+            showToast('success', `成功上传 ${result.length} 个${typeText}`);
             
             // 清空文件选择
             fileInput.value = '';
             
             // 重新加载附件列表
-            await this.loadAttachments(this.currentRecordId, this.canEdit, true); // 编辑模式上传
+            await this.loadAttachments(this.currentRecordId, this.canEdit, true, this.salesRecord); // 编辑模式上传
             
             // 更新主列表中的附件数量显示
             this.updateMainListAttachmentCount(this.currentRecordId);
+            
+            // 如果当前页面是销售记录列表页面，重新加载列表数据以确保一致性
+            if (typeof loadSalesRecords === 'function') {
+                await loadSalesRecords();
+                console.log('销售记录列表已刷新');
+            }
 
         } catch (error) {
             console.error('上传附件失败:', error);
@@ -490,10 +601,16 @@ class AttachmentsManager {
             showToast('success', `文件 "${filename}" 已删除`);
             
             // 重新加载附件列表
-            await this.loadAttachments(this.currentRecordId, this.canEdit, this.isEditMode); // 使用保存的模式
+            await this.loadAttachments(this.currentRecordId, this.canEdit, this.isEditMode, this.salesRecord); // 使用保存的模式和记录
             
             // 更新主列表中的附件数量显示
             this.updateMainListAttachmentCount(this.currentRecordId);
+            
+            // 如果当前页面是销售记录列表页面，重新加载列表数据以确保一致性
+            if (typeof loadSalesRecords === 'function') {
+                await loadSalesRecords();
+                console.log('销售记录列表已刷新');
+            }
 
         } catch (error) {
             console.error('删除附件失败:', error);
@@ -581,13 +698,14 @@ class AttachmentsManager {
             // 查找主列表中对应的行并更新附件数量显示
             const tableRows = document.querySelectorAll('#sales-table tbody tr');
             tableRows.forEach(row => {
-                const editButton = row.querySelector('button[onclick*="showEditModal"]');
-                if (editButton) {
-                    const onclickAttr = editButton.getAttribute('onclick');
-                    const match = onclickAttr.match(/showEditModal\('(\d+)'\)/);
+                // 通过查看详情按钮来匹配记录ID
+                const viewButton = row.querySelector('button[onclick*="showSalesDetails"]');
+                if (viewButton) {
+                    const onclickAttr = viewButton.getAttribute('onclick');
+                    const match = onclickAttr.match(/showSalesDetails\('(\d+)'\)/);
                     if (match && match[1] === recordId.toString()) {
-                        // 找到对应的行，更新附件数量
-                        const attachmentCell = row.cells[10]; // 附件数量在第11列（索引10）
+                        // 找到对应的行，更新附件数量（附件列是第8列，索引为7）
+                        const attachmentCell = row.cells[7]; 
                         if (attachmentCell) {
                             const attachmentBadge = attachmentCount > 0 
                                 ? `<span class="badge bg-primary">${attachmentCount}</span>` 

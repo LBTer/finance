@@ -6,7 +6,9 @@ from datetime import datetime, timedelta, timezone
 
 from app.core.dependencies import AsyncSessionDep, get_current_user
 from app.models.user import User
-from app.models.sales_record import SalesRecord, OrderStage
+from app.models.sales_record import SalesRecord, OrderStage, OrderSource
+from app.models.fees import ShippingFees
+from app.models.procurement import Procurement
 from app.schemas.stats import DashboardStats
 
 router = APIRouter(prefix="/stats", tags=["统计数据"])
@@ -20,11 +22,11 @@ async def get_dashboard_stats(
     获取仪表盘统计数据
     
     返回:
-        - total_sales: 本月销售总额
-        - total_orders: 历史总最终阶段订单数量
-        - stage_5_orders: 本月最终阶段订单数量
-        - pending_orders: 未完成订单数量
-        - 其他字段设为0（保持schema兼容性）
+        - total_sales: 本月销售总额（美元）
+        - total_orders: 历史总订单数量
+        - stage_X_orders: 各阶段订单数量
+        - 订单来源统计
+        - 审核统计
     """
     # 获取当前月份的第一天
     now = datetime.now(timezone.utc)
@@ -39,63 +41,60 @@ async def get_dashboard_stats(
     # 基础查询条件
     base_query = select(func.count(SalesRecord.id))
     if not current_user.is_superuser:
-        # 非管理员只能看到自己的销售记录
+        # 非超级管理员只能看到自己的销售记录
         base_query = base_query.where(SalesRecord.user_id == current_user.id)
     
-    # 1. 历史总最终阶段订单数量
-    total_completed_query = base_query.where(
-        SalesRecord.stage == OrderStage.STAGE_5.value
-    )
-    total_completed_result = await db.execute(total_completed_query)
-    total_completed_orders = total_completed_result.scalar() or 0
+    # 1. 获取各阶段订单数量
+    stage_counts = {}
+    for stage in OrderStage:
+        stage_query = base_query.where(SalesRecord.stage == stage.value)
+        result = await db.execute(stage_query)
+        stage_counts[stage.value] = result.scalar() or 0
     
-    # 2. 本月最终阶段订单数量
-    monthly_completed_query = base_query.where(
-        SalesRecord.stage == OrderStage.STAGE_5.value,
-        SalesRecord.created_at >= first_day,
-        SalesRecord.created_at < next_month
-    )
-    monthly_completed_result = await db.execute(monthly_completed_query)
-    monthly_completed_orders = monthly_completed_result.scalar() or 0
+    # 2. 获取订单来源统计
+    source_counts = {}
+    for source in OrderSource:
+        source_query = base_query.where(SalesRecord.order_source == source.value)
+        result = await db.execute(source_query)
+        source_counts[source.value] = result.scalar() or 0
     
-    # 3. 未完成订单数量（所有非最终阶段的订单）
-    pending_query = base_query.where(
-        SalesRecord.stage != OrderStage.STAGE_5.value
-    )
-    pending_result = await db.execute(pending_query)
-    pending_orders = pending_result.scalar() or 0
+    # 3. 历史总订单数量
+    total_orders_result = await db.execute(base_query)
+    total_orders = total_orders_result.scalar() or 0
     
-    # 计算本月销售总额（仅最终阶段订单）
-    total_sales_query = select(
-        func.sum(
-            SalesRecord.total_price + 
-            SalesRecord.domestic_shipping_fee + 
-            SalesRecord.overseas_shipping_fee - 
-            SalesRecord.refund_amount - 
-            SalesRecord.tax_refund
-        ).label("total_sales")
+    # 4. 计算本月销售总额（仅最终阶段订单）
+    monthly_sales_query = select(
+        func.sum(SalesRecord.total_price).label("total_sales")
     ).where(
         SalesRecord.created_at >= first_day,
         SalesRecord.created_at < next_month,
         SalesRecord.stage == OrderStage.STAGE_5.value
     )
     
-    total_sales_result = await db.execute(total_sales_query)
-    total_sales = total_sales_result.scalar() or 0
+    if not current_user.is_superuser:
+        monthly_sales_query = monthly_sales_query.where(SalesRecord.user_id == current_user.id)
     
-    # 构建返回结果（使用新的DashboardStats结构）
+    monthly_sales_result = await db.execute(monthly_sales_query)
+    total_sales = monthly_sales_result.scalar() or 0.0
+    
+    # 5. 审核统计
+    pending_logistics_review = stage_counts.get(OrderStage.STAGE_2.value, 0)
+    pending_final_review = stage_counts.get(OrderStage.STAGE_4.value, 0)
+    completed_orders = stage_counts.get(OrderStage.STAGE_5.value, 0)
+    
+    # 构建返回结果
     return DashboardStats(
         total_sales=float(total_sales),
-        total_orders=total_completed_orders,
-        stage_1_orders=0,
-        stage_2_orders=0,
-        stage_3_orders=0,
-        stage_4_orders=0,
-        stage_5_orders=monthly_completed_orders,
-        alibaba_orders=0,
-        domestic_orders=0,
-        exhibition_orders=0,
-        pending_logistics_review=0,
-        pending_final_review=0,
-        completed_orders=pending_orders
+        total_orders=total_orders,
+        stage_1_orders=stage_counts.get(OrderStage.STAGE_1.value, 0),
+        stage_2_orders=stage_counts.get(OrderStage.STAGE_2.value, 0),
+        stage_3_orders=stage_counts.get(OrderStage.STAGE_3.value, 0),
+        stage_4_orders=stage_counts.get(OrderStage.STAGE_4.value, 0),
+        stage_5_orders=stage_counts.get(OrderStage.STAGE_5.value, 0),
+        alibaba_orders=source_counts.get(OrderSource.ALIBABA.value, 0),
+        domestic_orders=source_counts.get(OrderSource.DOMESTIC.value, 0),
+        exhibition_orders=source_counts.get(OrderSource.EXHIBITION.value, 0),
+        pending_logistics_review=pending_logistics_review,
+        pending_final_review=pending_final_review,
+        completed_orders=completed_orders
     ) 

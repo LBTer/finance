@@ -4,8 +4,8 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>财务系统 - 销售记录</title>
-  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
-  <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.0/font/bootstrap-icons.css" rel="stylesheet">
+  <link href="https://cdn.bootcdn.net/ajax/libs/bootstrap/5.3.0/css/bootstrap.min.css" rel="stylesheet">
+  <link href="https://cdn.bootcdn.net/ajax/libs/bootstrap-icons/1.11.0/font/bootstrap-icons.css" rel="stylesheet">
   <link href="https://fonts.googleapis.com/css?family=Nunito:200,200i,300,300i,400,400i,600,600i,700,700i,800,800i,900,900i" rel="stylesheet">
   <link href="/static/css/main.css" rel="stylesheet">
 </head>
@@ -41,6 +41,20 @@
           <a class="nav-link active" href="/sales">
             <i class="bi bi-cart3"></i>
             <span>销售记录</span>
+          </a>
+        </li>
+        
+        <li class="nav-item">
+          <a class="nav-link" href="/fees">
+            <i class="bi bi-truck"></i>
+            <span>运费记录</span>
+          </a>
+        </li>
+        
+        <li class="nav-item">
+          <a class="nav-link" href="/procurement">
+            <i class="bi bi-box-seam"></i>
+            <span>采购记录</span>
           </a>
         </li>
         
@@ -93,7 +107,7 @@
       <!-- 内容区 -->
       <div class="container-fluid">
         <div class="d-sm-flex align-items-center justify-content-between mb-4">
-          <h1 class="h3 mb-0 text-gray-800">销售记录 (美金订单)</h1>
+          <h1 class="h3 mb-0 text-gray-800">销售记录</h1>
           <button class="btn btn-primary shadow-sm" id="add-sales-btn">
             <i class="bi bi-plus-circle me-1"></i>
             新增记录
@@ -107,27 +121,33 @@
           </div>
           <div class="card-body">
             <form id="filter-form" class="row g-3">
-              <div class="col-md-3">
+              <div class="col-md-2">
                 <div class="input-group">
-                  <span class="input-group-text">状态</span>
-                  <select class="form-select" id="status-filter">
+                  <span class="input-group-text">阶段</span>
+                  <select class="form-select" id="stage-filter">
                     <option value="">全部</option>
-                    <option value="pending">待审核</option>
-                    <option value="approved">已审核</option>
-                    <option value="rejected">已拒绝</option>
+                    <option value="stage_1">初步信息补充</option>
+                    <option value="stage_2">待初步审核</option>
+                    <option value="stage_3">运费等信息补充</option>
+                    <option value="stage_4">待最终审核</option>
+                    <option value="stage_5">审核完成</option>
                   </select>
                 </div>
               </div>
-              <div class="col-md-3">
+              <div class="col-md-2">
                 <div class="input-group">
-                  <span class="input-group-text">类别</span>
-                  <input type="text" class="form-control" id="category-filter" placeholder="产品类别">
+                  <span class="input-group-text">类型</span>
+                  <select class="form-select" id="order-type-filter">
+                    <option value="">全部</option>
+                    <option value="overseas">海外订单</option>
+                    <option value="domestic">国内订单</option>
+                  </select>
                 </div>
               </div>
-              <div class="col-md-4">
+              <div class="col-md-6">
                 <div class="input-group">
                   <span class="input-group-text">搜索</span>
-                  <input type="text" class="form-control" id="search-input" placeholder="订单号/产品名称/物流公司">
+                  <input type="text" class="form-control" id="search-input" placeholder="订单编号/产品名称">
                   <button class="btn btn-primary" type="submit">
                     <i class="bi bi-search"></i>
                   </button>
@@ -142,22 +162,42 @@
           <div class="card-body">
             <div class="table-responsive">
               <table class="table table-hover" id="sales-table">
+                <colgroup>
+                  <col style="width: 120px;">  <!-- 订单号 -->
+                  <col style="width: 140px;">  <!-- 订单编号 -->
+                  <col style="width: 150px;">  <!-- 产品名称 -->
+                  <col style="width: 80px;">   <!-- 数量 -->
+                  <col style="width: 100px;">  <!-- 单价 -->
+                  <col style="width: 100px;">  <!-- 总价 -->
+                  <col style="width: 140px;">  <!-- 阶段 -->
+                  <col style="width: 80px;">   <!-- 附件 -->
+                  <col style="width: 100px;">  <!-- 创建者 -->
+                  <col style="width: 120px;">  <!-- 创建时间 -->
+                  <col>                        <!-- 操作列 -->
+                </colgroup>
                 <thead>
                   <tr>
                     <th>订单号</th>
+                    <th>订单编号</th>
                     <th>产品名称</th>
-                    <th>类别</th>
-                    <th>数量</th>
-                    <th>单价($)</th>
-                    <th>总价($)</th>
-                    <th>汇率</th>
-                    <th>物流公司</th>
-                    <th>利润(¥)</th>
-                    <th>状态</th>
-                    <th>附件</th>
-                    <th>提交人</th>
-                    <th>审核人</th>
-                    <th>创建时间</th>
+                    <th style="width: 80px;">数量</th>
+                    <th style="width: 100px;">单价($)</th>
+                    <th style="width: 100px;">总价($)</th>
+                    <th style="width: 140px;">阶段 <i class="bi bi-info-circle text-muted" 
+                        data-bs-toggle="tooltip" 
+                        data-bs-placement="top" 
+                        data-bs-html="true"
+                        title="<div class='text-start'>
+                          <strong>阶段说明：</strong><br/>
+                          1️⃣ 初步信息补充 - 销售人员录入基本信息<br/>
+                          2️⃣ 待初步审核 - 等待后勤人员审核<br/>
+                          3️⃣ 运费等信息补充 - 后勤人员补充运费信息<br/>
+                          4️⃣ 待最终审核 - 等待最终审核<br/>
+                          5️⃣ 审核完成 - 流程结束
+                        </div>"></i></th>
+                    <th style="width: 80px;">附件</th>
+                    <th style="width: 100px;">创建者</th>
+                    <th style="width: 120px;">创建时间</th>
                     <th>操作</th>
                   </tr>
                 </thead>
@@ -204,7 +244,7 @@
     <div class="modal-dialog modal-xl">
       <div class="modal-content">
         <div class="modal-header">
-          <h5 class="modal-title" id="modal-title">新增销售记录 (美金订单)</h5>
+          <h5 class="modal-title" id="modal-title">新增销售记录</h5>
           <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
         </div>
         <div class="modal-body">
@@ -223,19 +263,38 @@
               </div>
               
               <div class="col-md-6">
+                <label for="order-id" class="form-label">订单号</label>
+                <input type="text" class="form-control" id="order-id" name="order_id" disabled>
+                <div class="form-text">
+                  <small class="text-muted">系统自动生成，格式：#来源-ID</small>
+                </div>
+              </div>
+              
+              <div class="col-md-6">
+                <label for="order-type" class="form-label">订单类型 *</label>
+                <select class="form-select" id="order-type" name="order_type" required>
+                  <option value="">请选择订单类型</option>
+                  <option value="overseas">海外订单</option>
+                  <option value="domestic">国内订单</option>
+                </select>
+                <div class="invalid-feedback">请选择订单类型</div>
+              </div>
+              
+              <div class="col-md-6">
+                <label for="order-source" class="form-label">订单来源 *</label>
+                <select class="form-select" id="order-source" name="order_source" required>
+                  <option value="">请选择订单来源</option>
+                  <option value="alibaba">阿里</option>
+                  <option value="domestic">国内</option>
+                  <option value="exhibition">展会</option>
+                </select>
+                <div class="invalid-feedback">请选择订单来源</div>
+              </div>
+              
+              <div class="col-md-12">
                 <label for="product-name" class="form-label">产品名称 *</label>
                 <input type="text" class="form-control" id="product-name" name="product_name" required>
                 <div class="invalid-feedback">请输入产品名称</div>
-              </div>
-              
-              <div class="col-md-6">
-                <label for="category" class="form-label">类别</label>
-                <input type="text" class="form-control" id="category" name="category" placeholder="例如：电子产品">
-              </div>
-              
-              <div class="col-md-6">
-                <label for="logistics-company" class="form-label">物流公司</label>
-                <input type="text" class="form-control" id="logistics-company" name="logistics_company" placeholder="例如：FedEx, DHL">
               </div>
             </div>
             
@@ -266,77 +325,118 @@
                   <div class="invalid-feedback">总价必须大于0</div>
                 </div>
               </div>
-              
-              <div class="col-md-4">
-                <label for="exchange-rate" class="form-label">汇率 (USD-CNY) *</label>
-                <div class="input-group">
-                  <input type="number" class="form-control" id="exchange-rate" name="exchange_rate" min="1.0" max="20.0" step="0.0001" value="7.0000" required>
-                  <div class="invalid-feedback">汇率必须在1.0-20.0之间</div>
-                </div>
-              </div>
             </div>
             
-            <!-- 费用信息 -->
-            <div class="row g-3 mb-4">
-              <div class="col-12"><h6 class="text-primary border-bottom pb-2">费用信息</h6></div>
+            <!-- 运费信息管理（仅在阶段三显示） -->
+            <div class="row g-3 mb-4" id="shipping-fees-section" style="display: none;">
+              <div class="col-12"><h6 class="text-primary border-bottom pb-2"><i class="bi bi-truck"></i> 运费信息管理</h6></div>
               
-              <div class="col-md-6">
-                <label for="domestic-shipping-fee" class="form-label">运费-陆内 (CNY)</label>
-                <div class="input-group">
-                  <span class="input-group-text">¥</span>
-                  <input type="number" class="form-control" id="domestic-shipping-fee" name="domestic_shipping_fee" min="0" step="0.01" value="0">
-                </div>
-              </div>
-              
-              <div class="col-md-6">
-                <label for="overseas-shipping-fee" class="form-label">运费-海运 (CNY)</label>
-                <div class="input-group">
-                  <span class="input-group-text">¥</span>
-                  <input type="number" class="form-control" id="overseas-shipping-fee" name="overseas_shipping_fee" min="0" step="0.01" value="0">
-                </div>
-              </div>
-              
-              <div class="col-md-6">
-                <label for="refund-amount" class="form-label">退款金额 (CNY)</label>
-                <div class="input-group">
-                  <span class="input-group-text">¥</span>
-                  <input type="number" class="form-control" id="refund-amount" name="refund_amount" min="0" step="0.01" value="0">
-                </div>
-              </div>
-              
-              <div class="col-md-6">
-                <label for="tax-refund" class="form-label">退税金额 (CNY)</label>
-                <div class="input-group">
-                  <span class="input-group-text">¥</span>
-                  <input type="number" class="form-control" id="tax-refund" name="tax_refund" min="0" step="0.01" value="0">
-                </div>
-              </div>
-            </div>
-            
-            <!-- 利润计算 -->
-            <div class="row g-3 mb-4">
-              <div class="col-12"><h6 class="text-success border-bottom pb-2"><i class="bi bi-calculator"></i> 利润计算</h6></div>
-              
+              <!-- 现有运费记录 -->
               <div class="col-12">
+                <div id="shipping-fees-list" class="mb-3">
+                  <!-- 运费记录将动态添加 -->
+                </div>
+                
+                <!-- 添加新运费记录 -->
                 <div class="card border-success">
-                  <div class="card-body bg-light">
-                    <div class="mb-3">
-                      <small class="text-muted">
-                        <strong>计算公式：</strong>总价 × 汇率 - 运费(陆内) - 运费(海运) - 退款金额 + 退税金额
-                      </small>
-                    </div>
-                    <div class="mb-3">
-                      <small class="text-info" id="profit-calculation">
-                        计算过程：0.00 × 7.0000 - 0.00 - 0.00 - 0.00 + 0.00 = ¥0.00
-                      </small>
-                    </div>
-                    <div class="row">
-                      <div class="col-md-6 mx-auto">
-                        <label for="profit" class="form-label fw-bold text-success fs-5">最终利润 (CNY)</label>
-                        <div class="input-group input-group-lg">
-                          <span class="input-group-text bg-success text-white fw-bold">¥</span>
-                          <input type="number" class="form-control form-control-lg fw-bold text-success fs-4 text-center" id="profit" name="profit" step="0.01" value="0" readonly>
+                  <div class="card-header bg-success text-white d-flex justify-content-between align-items-center">
+                    <span><i class="bi bi-plus-circle"></i> 添加运费记录</span>
+                    <button type="button" class="btn btn-sm btn-light" id="toggle-shipping-form">
+                      <i class="bi bi-chevron-down"></i>
+                    </button>
+                  </div>
+                  <div class="card-body" id="shipping-fees-form" style="display: none;">
+                    <div class="row g-3">
+                      <div class="col-md-6">
+                        <label class="form-label">物流类型 *</label>
+                        <select class="form-select" id="logistics-type">
+                          <option value="domestic_express">国内快递</option>
+                          <option value="domestic_logistics">国内物流</option>
+                          <option value="international_express">国际快递</option>
+                          <option value="international_logistics">国际物流</option>
+                        </select>
+                      </div>
+                      <div class="col-md-6">
+                        <label class="form-label">运费金额 (CNY) *</label>
+                        <div class="input-group">
+                          <span class="input-group-text">¥</span>
+                          <input type="number" class="form-control" id="shipping-fee-amount" min="0" step="0.01">
                         </div>
+                      </div>
+                      <div class="col-md-6">
+                        <label class="form-label">支付方式 *</label>
+                        <input type="text" class="form-control" id="payment-method" placeholder="如：现金、银行转账、支付宝等">
+                      </div>
+                      <div class="col-md-6">
+                        <label class="form-label">物流公司 *</label>
+                        <input type="text" class="form-control" id="logistics-company" placeholder="如：顺丰速运、中通快递等">
+                      </div>
+                      <div class="col-12">
+                        <label class="form-label">运费备注</label>
+                        <input type="text" class="form-control" id="shipping-fee-remarks" placeholder="可选的运费备注">
+                      </div>
+                      <div class="col-12">
+                        <button type="button" class="btn btn-success btn-sm" id="add-shipping-fee-btn">
+                          <i class="bi bi-plus"></i> 添加运费记录
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+            
+            <!-- 采购信息管理（仅在阶段三显示） -->
+            <div class="row g-3 mb-4" id="procurement-section" style="display: none;">
+              <div class="col-12"><h6 class="text-primary border-bottom pb-2"><i class="bi bi-box-seam"></i> 采购信息管理</h6></div>
+              
+              <!-- 现有采购记录 -->
+              <div class="col-12">
+                <div id="procurement-list" class="mb-3">
+                  <!-- 采购记录将动态添加 -->
+                </div>
+                
+                <!-- 添加新采购记录 -->
+                <div class="card border-info">
+                  <div class="card-header bg-info text-white d-flex justify-content-between align-items-center">
+                    <span><i class="bi bi-plus-circle"></i> 添加采购记录</span>
+                    <button type="button" class="btn btn-sm btn-light" id="toggle-procurement-form">
+                      <i class="bi bi-chevron-down"></i>
+                    </button>
+                  </div>
+                  <div class="card-body" id="procurement-form" style="display: none;">
+                    <div class="row g-3">
+                      <div class="col-md-6">
+                        <label class="form-label">供应单位 *</label>
+                        <input type="text" class="form-control" id="procurement-supplier" placeholder="供应商名称">
+                      </div>
+                      <div class="col-md-6">
+                        <label class="form-label">采购事项 *</label>
+                        <input type="text" class="form-control" id="procurement-item" placeholder="采购事项详细描述">
+                      </div>
+                      <div class="col-md-4">
+                        <label class="form-label">数量 *</label>
+                        <input type="number" class="form-control" id="procurement-quantity" min="1" step="1" placeholder="采购数量">
+                      </div>
+                      <div class="col-md-4">
+                        <label class="form-label">采购金额 (CNY) *</label>
+                        <div class="input-group">
+                          <span class="input-group-text">¥</span>
+                          <input type="number" class="form-control" id="procurement-amount" min="0" step="0.01">
+                        </div>
+                      </div>
+                      <div class="col-md-4">
+                        <label class="form-label">支付方式 *</label>
+                        <input type="text" class="form-control" id="procurement-payment" placeholder="如：现金、银行转账等">
+                      </div>
+                      <div class="col-12">
+                        <label class="form-label">采购备注</label>
+                        <input type="text" class="form-control" id="procurement-remarks" placeholder="可选的采购备注">
+                      </div>
+                      <div class="col-12">
+                        <button type="button" class="btn btn-info btn-sm" id="add-procurement-btn">
+                          <i class="bi bi-plus"></i> 添加采购记录
+                        </button>
                       </div>
                     </div>
                   </div>
@@ -438,16 +538,16 @@
               <strong>订单编号：</strong> <span id="detail-order-number"></span>
             </div>
             <div class="col-md-6 mb-3">
-              <strong>状态：</strong> <span id="detail-status"></span>
+              <strong>阶段：</strong> <span id="detail-status"></span>
             </div>
             <div class="col-md-6 mb-3">
               <strong>产品名称：</strong> <span id="detail-product-name"></span>
             </div>
             <div class="col-md-6 mb-3">
-              <strong>类别：</strong> <span id="detail-category"></span>
+              <strong>订单类型：</strong> <span id="detail-order-type"></span>
             </div>
             <div class="col-md-6 mb-3">
-              <strong>物流公司：</strong> <span id="detail-logistics-company"></span>
+              <strong>订单来源：</strong> <span id="detail-order-source"></span>
             </div>
             <div class="col-md-6 mb-3">
               <strong>提交人：</strong> <span id="detail-creator"></span>
@@ -466,56 +566,6 @@
             <div class="col-md-4 mb-3">
               <strong>总价：</strong> $<span id="detail-total-price"></span>
             </div>
-            <div class="col-md-4 mb-3">
-              <strong>汇率：</strong> <span id="detail-exchange-rate"></span>
-            </div>
-          </div>
-          
-          <!-- 费用信息 -->
-          <div class="row mb-4">
-            <div class="col-12"><h6 class="text-primary border-bottom pb-2">费用信息</h6></div>
-            <div class="col-md-4 mb-3">
-              <strong>运费(陆内)：</strong> ¥<span id="detail-domestic-shipping-fee"></span>
-            </div>
-            <div class="col-md-4 mb-3">
-              <strong>运费(海运)：</strong> ¥<span id="detail-overseas-shipping-fee"></span>
-            </div>
-            <div class="col-md-4 mb-3">
-              <strong>退款金额：</strong> ¥<span id="detail-refund-amount"></span>
-            </div>
-            <div class="col-md-4 mb-3">
-              <strong>退税金额：</strong> ¥<span id="detail-tax-refund"></span>
-            </div>
-            <div class="col-md-4 mb-3">
-              <strong>实际总金额：</strong> $<span id="detail-total-amount"></span>
-            </div>
-          </div>
-          
-          <!-- 利润计算结果 -->
-          <div class="row mb-4">
-            <div class="col-12"><h6 class="text-success border-bottom pb-2"><i class="bi bi-calculator"></i> 利润计算结果</h6></div>
-            <div class="col-12">
-              <div class="card border-success">
-                <div class="card-body bg-light text-center">
-                  <div class="mb-3">
-                    <small class="text-muted">
-                      <strong>计算公式：</strong>总价 × 汇率 - 运费(陆内) - 运费(海运) - 退款金额 + 退税金额
-                    </small>
-                  </div>
-                  <div class="mb-3">
-                    <small class="text-info" id="detail-profit-calculation">
-                      计算过程：加载中...
-                    </small>
-                  </div>
-                  <div class="mb-2">
-                    <span class="fs-6 text-muted">最终利润</span>
-                  </div>
-                  <div class="display-4 text-success fw-bold">
-                    ¥<span id="detail-profit"></span>
-                  </div>
-                </div>
-              </div>
-            </div>
           </div>
           
           <!-- 时间信息 -->
@@ -525,16 +575,54 @@
               <strong>创建时间：</strong> <span id="detail-created-at"></span>
             </div>
             <div class="col-md-6 mb-3">
-              <strong>审核时间：</strong> <span id="detail-approved-at"></span>
-            </div>
-            <div class="col-md-6 mb-3">
               <strong>提交人：</strong> <span id="detail-created-by"></span>
             </div>
             <div class="col-md-6 mb-3">
-              <strong>审核人：</strong> <span id="detail-approver"></span>
+              <strong>初次审核时间：</strong> <span id="detail-logistics-approved-at"></span>
+            </div>
+            <div class="col-md-6 mb-3">
+              <strong>初次审核人：</strong> <span id="detail-logistics-approver"></span>
+            </div>
+            <div class="col-md-6 mb-3">
+              <strong>最终审核时间：</strong> <span id="detail-final-approved-at"></span>
+            </div>
+            <div class="col-md-6 mb-3">
+              <strong>最终审核人：</strong> <span id="detail-final-approver"></span>
             </div>
           </div>
           
+          <!-- 运费记录 -->
+          <div class="row mb-4">
+            <div class="col-12"><h6 class="text-success border-bottom pb-2"><i class="bi bi-truck"></i> 运费记录</h6></div>
+            <div class="col-12">
+              <div id="detail-shipping-fees-container">
+                <div class="text-muted text-center py-3" id="detail-no-shipping-fees">
+                  <i class="bi bi-truck fs-1 text-muted"></i>
+                  <div>暂无运费记录</div>
+                </div>
+                <div id="detail-shipping-fees-list">
+                  <!-- 运费记录列表将动态添加 -->
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- 采购记录 -->
+          <div class="row mb-4">
+            <div class="col-12"><h6 class="text-info border-bottom pb-2"><i class="bi bi-box-seam"></i> 采购记录</h6></div>
+            <div class="col-12">
+              <div id="detail-procurement-container">
+                <div class="text-muted text-center py-3" id="detail-no-procurement">
+                  <i class="bi bi-box-seam fs-1 text-muted"></i>
+                  <div>暂无采购记录</div>
+                </div>
+                <div id="detail-procurement-list">
+                  <!-- 采购记录列表将动态添加 -->
+                </div>
+              </div>
+            </div>
+          </div>
+
           <!-- 附件列表 -->
           <div class="row mb-4">
             <div class="col-12"><h6 class="text-primary border-bottom pb-2"><i class="bi bi-paperclip"></i> 附件</h6></div>
@@ -573,17 +661,16 @@
           </div>
           
           <!-- 备注 -->
-          <div class="row">
+          <div class="row mb-4">
+            <div class="col-12"><h6 class="text-secondary border-bottom pb-2"><i class="bi bi-chat-text"></i> 备注</h6></div>
             <div class="col-12 mb-3">
-              <strong>备注：</strong> 
-              <p id="detail-remarks" class="mt-2 p-2 bg-light rounded"></p>
+              <p id="detail-remarks" class="mt-2 p-3 bg-light rounded border-start border-3 border-secondary"></p>
             </div>
           </div>
         </div>
         <div class="modal-footer">
           <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">关闭</button>
-          <button type="button" class="btn btn-success" id="approve-btn">批准</button>
-          <button type="button" class="btn btn-danger" id="reject-btn">拒绝</button>
+          <!-- 阶段操作按钮现在在表格的操作列中，详情模态框只用于查看 -->
         </div>
       </div>
     </div>
@@ -608,15 +695,148 @@
     </div>
   </div>
 
+  <!-- 编辑运费模态框 -->
+  <div class="modal fade" id="edit-shipping-fee-modal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h5 class="modal-title">编辑运费记录</h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+        </div>
+        <div class="modal-body">
+          <form id="edit-shipping-fee-form">
+            <input type="hidden" id="edit-fee-id">
+            
+            <div class="mb-3">
+              <label for="edit-logistics-type" class="form-label">物流类型 *</label>
+              <select class="form-select" id="edit-logistics-type" required>
+                <option value="domestic_express">国内快递</option>
+                <option value="domestic_logistics">国内物流</option>
+                <option value="international_express">国际快递</option>
+                <option value="international_logistics">国际物流</option>
+              </select>
+            </div>
+            
+            <div class="mb-3">
+              <label for="edit-shipping-fee-amount" class="form-label">运费金额 (CNY) *</label>
+              <input type="number" class="form-control" id="edit-shipping-fee-amount" 
+                     step="0.01" min="0.01" required placeholder="如：150.00">
+            </div>
+            
+            <div class="mb-3">
+              <label for="edit-payment-method" class="form-label">支付方式 *</label>
+              <input type="text" class="form-control" id="edit-payment-method" 
+                     required placeholder="如：现金、银行转账、支付宝等">
+            </div>
+            
+            <div class="mb-3">
+              <label for="edit-logistics-company" class="form-label">物流公司 *</label>
+              <input type="text" class="form-control" id="edit-logistics-company" 
+                     required placeholder="如：顺丰速运、中通快递等">
+            </div>
+            
+            <div class="mb-3">
+              <label for="edit-shipping-fee-remarks" class="form-label">运费备注</label>
+              <textarea class="form-control" id="edit-shipping-fee-remarks" 
+                        rows="2" placeholder="可选的运费备注"></textarea>
+            </div>
+          </form>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">取消</button>
+          <button type="button" class="btn btn-primary" id="save-shipping-fee-btn">保存</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 编辑采购模态框 -->
+  <div class="modal fade" id="edit-procurement-modal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h5 class="modal-title">编辑采购记录</h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+        </div>
+        <div class="modal-body">
+          <form id="edit-procurement-form">
+            <input type="hidden" id="edit-procurement-id">
+            
+            <div class="mb-3">
+              <label for="edit-procurement-supplier" class="form-label">供应单位 *</label>
+              <input type="text" class="form-control" id="edit-procurement-supplier" 
+                     required placeholder="如：深圳某某供应商">
+            </div>
+            
+            <div class="mb-3">
+              <label for="edit-procurement-item" class="form-label">采购事项 *</label>
+              <textarea class="form-control" id="edit-procurement-item" rows="2" 
+                        required placeholder="详细描述采购的物品或服务"></textarea>
+            </div>
+            
+            <div class="row">
+              <div class="col-md-6 mb-3">
+                <label for="edit-procurement-quantity" class="form-label">数量 *</label>
+                <input type="number" class="form-control" id="edit-procurement-quantity" 
+                       min="1" required placeholder="如：100">
+              </div>
+              
+              <div class="col-md-6 mb-3">
+                <label for="edit-procurement-amount" class="form-label">金额 (CNY) *</label>
+                <input type="number" class="form-control" id="edit-procurement-amount" 
+                       step="0.01" min="0.01" required placeholder="如：5000.00">
+              </div>
+            </div>
+            
+            <div class="mb-3">
+              <label for="edit-procurement-payment" class="form-label">支付方式 *</label>
+              <input type="text" class="form-control" id="edit-procurement-payment" 
+                     required placeholder="如：银行转账、现金等">
+            </div>
+            
+            <div class="mb-3">
+              <label for="edit-procurement-remarks" class="form-label">采购备注</label>
+              <textarea class="form-control" id="edit-procurement-remarks" 
+                        rows="2" placeholder="可选的采购备注"></textarea>
+            </div>
+          </form>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">取消</button>
+          <button type="button" class="btn btn-primary" id="save-procurement-btn">保存</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
   <!-- 消息提示框 -->
   <div class="position-fixed bottom-0 end-0 p-3" style="z-index: 5">
     <div id="toast-container"></div>
   </div>
 
-  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/jquery@3.6.0/dist/jquery.min.js"></script>
+  <!-- 隐藏的元素，用于保持JavaScript兼容性 -->
+  <div style="display: none;">
+    <span id="detail-exchange-rate"></span>
+    <span id="detail-domestic-shipping-fee"></span>
+    <span id="detail-overseas-shipping-fee"></span>
+    <span id="detail-logistics-company"></span>
+    <span id="detail-refund-amount"></span>
+    <span id="detail-tax-refund"></span>
+    <span id="detail-profit"></span>
+    <span id="detail-total-amount"></span>
+    <span id="detail-profit-calculation"></span>
+  </div>
+
+  <!-- 工作流程帮助按钮容器 -->
+  <div class="workflow-help-container">
+    <!-- 帮助按钮将在这里动态生成 -->
+  </div>
+
+  <script src="https://cdn.bootcdn.net/ajax/libs/bootstrap/5.3.0/js/bootstrap.bundle.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jquery/3.6.0/jquery.min.js"></script>
   <script src="/static/js/main.js"></script>
   <script src="/static/js/attachments.js"></script>
   <script src="/static/js/sales.js"></script>
+  <script src="/static/js/workflow-help.js"></script>
 </body>
 </html> 

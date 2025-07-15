@@ -1,0 +1,308 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>财务系统 - 运费记录</title>
+  <link href="https://cdn.bootcdn.net/ajax/libs/bootstrap/5.3.0/css/bootstrap.min.css" rel="stylesheet">
+  <link href="https://cdn.bootcdn.net/ajax/libs/bootstrap-icons/1.11.0/font/bootstrap-icons.css" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css?family=Nunito:200,200i,300,300i,400,400i,600,600i,700,700i,800,800i,900,900i" rel="stylesheet">
+  <link href="/static/css/main.css" rel="stylesheet">
+</head>
+<body>
+  <div class="loading-spinner">
+    <div class="spinner-border text-primary" role="status">
+      <span class="visually-hidden">加载中...</span>
+    </div>
+  </div>
+
+  <!-- 页面容器 -->
+  <div class="d-flex">
+    <!-- 侧边栏 -->
+    <div class="sidebar col-lg-2 d-flex flex-column">
+      <div class="sidebar-brand d-flex align-items-center justify-content-center text-white py-2">
+        <div class="sidebar-brand-icon me-2">
+          <i class="bi bi-currency-yen"></i>
+        </div>
+        <div class="sidebar-brand-text">财务系统</div>
+      </div>
+      
+      <hr class="sidebar-divider my-0">
+      
+      <ul class="nav flex-column">
+        <li class="nav-item">
+          <a class="nav-link" href="/dashboard">
+            <i class="bi bi-speedometer2"></i>
+            <span>仪表盘</span>
+          </a>
+        </li>
+        
+        <li class="nav-item">
+          <a class="nav-link" href="/sales">
+            <i class="bi bi-cart3"></i>
+            <span>销售记录</span>
+          </a>
+        </li>
+        
+        <li class="nav-item" id="fees-menu">
+          <a class="nav-link active" href="/fees">
+            <i class="bi bi-truck"></i>
+            <span>运费记录</span>
+          </a>
+        </li>
+        
+        <li class="nav-item">
+          <a class="nav-link" href="/procurement">
+            <i class="bi bi-box-seam"></i>
+            <span>采购记录</span>
+          </a>
+        </li>
+        
+        <!-- 只对管理员显示 -->
+        <li class="nav-item admin-only" id="users-menu">
+          <a class="nav-link" href="/users">
+            <i class="bi bi-people"></i>
+            <span>用户管理</span>
+          </a>
+        </li>
+      </ul>
+      
+      <div class="mt-auto mb-4 text-center text-white small">
+        <span>© 2024 Finance System</span>
+      </div>
+    </div>
+    
+    <!-- 主要内容区域 -->
+    <div class="content-wrapper col-lg-10 d-flex flex-column">
+      <!-- 顶部导航栏 -->
+      <nav class="topbar navbar navbar-expand navbar-light bg-white mb-4">
+        <div class="container-fluid">
+          <button id="sidebar-toggle" class="btn btn-link d-md-none">
+            <i class="bi bi-list"></i>
+          </button>
+          
+          <div class="d-flex ms-auto">
+            <div class="dropdown">
+              <a class="nav-link dropdown-toggle" href="#" role="button" id="userDropdown" data-bs-toggle="dropdown" aria-expanded="false">
+                <span class="d-none d-lg-inline text-gray-600 small me-2" id="current-user-name">用户名</span>
+                <i class="bi bi-person-circle"></i>
+              </a>
+              <ul class="dropdown-menu dropdown-menu-end shadow" aria-labelledby="userDropdown">
+                <li>
+                  <div class="dropdown-item-text">
+                    <div class="small text-gray-500">角色</div>
+                    <span id="current-user-role">加载中...</span>
+                  </div>
+                </li>
+                <li><hr class="dropdown-divider"></li>
+                <li><a class="dropdown-item" href="#" id="logout-btn">
+                  <i class="bi bi-box-arrow-right me-2"></i>退出
+                </a></li>
+              </ul>
+            </div>
+          </div>
+        </div>
+      </nav>
+      
+      <!-- 内容区 -->
+      <div class="container-fluid">
+        <div class="d-sm-flex align-items-center justify-content-between mb-4">
+          <h1 class="h3 mb-0 text-gray-800">运费记录</h1>
+          <div class="d-flex gap-2 align-items-center">
+            <button class="btn btn-info shadow-sm" id="stats-btn">
+              <i class="bi bi-bar-chart me-1"></i>
+              统计信息
+            </button>
+            <div class="alert alert-info mb-0 py-2 px-3" role="alert">
+              <i class="bi bi-info-circle me-1"></i>
+              新增相应的记录要到销售记录页面的相应的销售记录处增加
+            </div>
+          </div>
+        </div>
+        
+        <!-- 筛选栏 -->
+        <div class="card shadow mb-4">
+          <div class="card-header py-3">
+            <h6 class="m-0 font-weight-bold text-primary">筛选查询</h6>
+          </div>
+          <div class="card-body">
+            <form id="filter-form" class="row g-3">
+              <div class="col-md-3">
+                <div class="input-group">
+                  <span class="input-group-text">物流类型</span>
+                  <select class="form-select" id="logistics-type-filter">
+                    <option value="">全部</option>
+                    <option value="domestic_express">国内快递</option>
+                    <option value="international_express">国际快递</option>
+                  </select>
+                </div>
+              </div>
+              <div class="col-md-3">
+                <div class="input-group">
+                  <span class="input-group-text">订单ID</span>
+                  <input type="number" class="form-control" id="sales-record-filter" placeholder="订单ID">
+                </div>
+              </div>
+              <div class="col-md-4">
+                <div class="input-group">
+                  <span class="input-group-text">物流公司</span>
+                  <input type="text" class="form-control" id="logistics-company-filter" placeholder="物流公司名称">
+                  <button class="btn btn-primary" type="submit">
+                    <i class="bi bi-search"></i>
+                  </button>
+                </div>
+              </div>
+            </form>
+          </div>
+        </div>
+        
+        <!-- 运费记录列表 -->
+        <div class="card shadow mb-4">
+          <div class="card-body">
+            <div class="table-responsive">
+              <table class="table table-hover" id="fees-table">
+                <thead>
+                  <tr>
+                    <th style="width: 14.28%;">关联订单</th>
+                    <th style="width: 14.28%;">运费金额(¥)</th>
+                    <th style="width: 14.28%;">物流类型</th>
+                    <th style="width: 14.28%;">支付方式</th>
+                    <th style="width: 14.28%;">物流公司</th>
+                    <th style="width: 14.28%;">备注</th>
+                    <th style="width: 14.32%;">创建时间</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <!-- 数据将通过 JavaScript 动态填充 -->
+                </tbody>
+              </table>
+            </div>
+            
+            <!-- 分页 -->
+            <div class="d-flex justify-content-between align-items-center mt-3">
+              <div class="dataTables_info" id="pagination-info">
+                显示 1 到 10 条数据，共 0 条
+              </div>
+              <div class="dataTables_paginate paging_simple_numbers">
+                <ul class="pagination" id="pagination">
+                  <li class="page-item disabled">
+                    <a class="page-link" href="#" id="prev-page">上一页</a>
+                  </li>
+                  <!-- 分页将由JavaScript动态填充 -->
+                  <li class="page-item disabled">
+                    <a class="page-link" href="#" id="next-page">下一页</a>
+                  </li>
+                </ul>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+      
+      <!-- 页脚 -->
+      <footer class="sticky-footer bg-white mt-auto">
+        <div class="container my-auto">
+          <div class="copyright text-center my-auto">
+            <span>Copyright © 财务管理系统 2024</span>
+          </div>
+        </div>
+      </footer>
+    </div>
+  </div>
+
+  <!-- 运费详情模态框 -->
+  <div class="modal fade" id="fee-detail-modal" tabindex="-1" aria-labelledby="feeDetailModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-lg">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h5 class="modal-title" id="feeDetailModalLabel">运费详情</h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+        </div>
+        <div class="modal-body">
+          <div class="row" id="fee-detail-content">
+            <!-- 详情内容将由JavaScript填充 -->
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">关闭</button>
+          <button type="button" class="btn btn-primary" id="edit-fee-btn" style="display:none;">
+            <i class="bi bi-pencil me-1"></i>
+            编辑运费
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 统计信息模态框 -->
+  <div class="modal fade" id="stats-modal" tabindex="-1" aria-labelledby="statsModalLabel" aria-hidden="true">
+    <div class="modal-dialog">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h5 class="modal-title" id="statsModalLabel">运费统计信息</h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+        </div>
+        <div class="modal-body">
+          <div class="row text-center">
+            <div class="col-md-6">
+              <div class="card border-left-primary shadow h-100 py-2">
+                <div class="card-body">
+                  <div class="row no-gutters align-items-center">
+                    <div class="col mr-2">
+                      <div class="text-xs font-weight-bold text-primary text-uppercase mb-1">
+                        运费记录总数
+                      </div>
+                      <div class="h5 mb-0 font-weight-bold text-gray-800" id="total-count">0</div>
+                    </div>
+                    <div class="col-auto">
+                      <i class="bi bi-truck text-gray-300" style="font-size: 2rem;"></i>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+            <div class="col-md-6">
+              <div class="card border-left-success shadow h-100 py-2">
+                <div class="card-body">
+                  <div class="row no-gutters align-items-center">
+                    <div class="col mr-2">
+                      <div class="text-xs font-weight-bold text-success text-uppercase mb-1">
+                        运费总金额
+                      </div>
+                      <div class="h5 mb-0 font-weight-bold text-gray-800" id="total-amount">¥0.00</div>
+                    </div>
+                    <div class="col-auto">
+                      <i class="bi bi-currency-yen text-gray-300" style="font-size: 2rem;"></i>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">关闭</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Toast 容器 -->
+  <div aria-live="polite" aria-atomic="true" class="position-relative">
+    <div class="toast-container position-fixed bottom-0 end-0 p-3">
+      <!-- Toast 会动态添加到这里 -->
+    </div>
+  </div>
+
+  <!-- 工作流程帮助按钮容器 -->
+  <div class="workflow-help-container">
+    <!-- 帮助按钮将在这里动态生成 -->
+  </div>
+
+  <!-- JavaScript -->
+  <script src="https://cdn.bootcdn.net/ajax/libs/bootstrap/5.3.0/js/bootstrap.bundle.min.js"></script>
+  <script src="/static/js/main.js"></script>
+  <script src="/static/js/fees.js"></script>
+  <script src="/static/js/workflow-help.js"></script>
+</body>
+</html> 

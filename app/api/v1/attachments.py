@@ -143,7 +143,6 @@ async def validate_and_save_attachments(
 
 
 @router.post("/upload/{sales_record_id}", response_model=List[AttachmentResponse])
-@check_sales_record_permissions(Action.UPDATE, lambda db, sales_record_id, **kwargs: get_sales_record(db, sales_record_id, **kwargs))
 async def upload_attachments(
     sales_record_id: int,
     attachment_type: Annotated[str, Form()],
@@ -157,10 +156,14 @@ async def upload_attachments(
     - **sales_record_id**: 销售记录ID
     - **attachment_type**: 附件类型 (sales: 销售附件, logistics: 后勤附件)
     - **files**: 上传的文件列表
+    
+    权限要求：
+    - 销售附件：只能在阶段一且是创建者本人上传
+    - 后勤附件：只能在阶段三且具有后勤职能的人上传
     """
     logger.info(f"开始上传附件 - sales_record_id: {sales_record_id}, 附件类型: {attachment_type}, 文件数量: {len(files)}, user_id: {current_user.id}")
     
-    # 验证销售记录是否存在
+    # 验证销售记录是否存在并获取详细信息
     result = await db.execute(
         select(SalesRecord).where(SalesRecord.id == sales_record_id)
     )
@@ -171,6 +174,33 @@ async def upload_attachments(
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="销售记录不存在"
+        )
+    
+    # 验证附件类型并检查权限
+    from app.core.permissions import SalesRecordPermission, Action
+    
+    permission_checker = SalesRecordPermission(current_user)
+    
+    if attachment_type == AttachmentType.SALES.value:
+        # 检查销售附件管理权限
+        has_permission = await permission_checker.has_permission(Action.MANAGE_SALES_ATTACHMENT, sales_record)
+        if not has_permission:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="销售附件只能在阶段一且由创建者本人上传"
+            )
+    elif attachment_type == AttachmentType.LOGISTICS.value:
+        # 检查后勤附件管理权限
+        has_permission = await permission_checker.has_permission(Action.MANAGE_LOGISTICS_ATTACHMENT, sales_record)
+        if not has_permission:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="后勤附件只能在阶段三且由具有后勤职能的人上传"
+            )
+    else:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"无效的附件类型: {attachment_type}"
         )
     
     # 调用内部函数处理附件
@@ -293,7 +323,6 @@ async def download_attachment(
 
 
 @router.delete("/{attachment_id}")
-@check_sales_record_permissions(Action.UPDATE, lambda db, attachment_id, **kwargs: get_attachment_sales_record(db, attachment_id))
 async def delete_attachment(
     attachment_id: int,
     db: AsyncSessionDep,
@@ -303,20 +332,55 @@ async def delete_attachment(
     删除附件
     
     - **attachment_id**: 附件ID
+    
+    权限要求：
+    - 销售附件：只能在阶段一且由创建者本人删除
+    - 后勤附件：只能在阶段三且由具有后勤职能的人删除
     """
     logger.info(f"删除附件 - attachment_id: {attachment_id}, user_id: {current_user.id}")
     
-    # 获取附件信息
+    # 获取附件信息和关联的销售记录
     result = await db.execute(
-        select(Attachment).where(Attachment.id == attachment_id)
+        select(Attachment, SalesRecord)
+        .join(SalesRecord, Attachment.sales_record_id == SalesRecord.id)
+        .where(Attachment.id == attachment_id)
     )
-    attachment = result.scalar_one_or_none()
+    attachment_record = result.first()
     
-    if not attachment:
+    if not attachment_record:
         logger.warning(f"附件不存在 - attachment_id: {attachment_id}")
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="附件不存在"
+        )
+    
+    attachment, sales_record = attachment_record
+    
+    # 验证权限
+    from app.core.permissions import SalesRecordPermission, Action
+    
+    permission_checker = SalesRecordPermission(current_user)
+    
+    if attachment.attachment_type == AttachmentType.SALES.value:
+        # 检查销售附件管理权限
+        has_permission = await permission_checker.has_permission(Action.MANAGE_SALES_ATTACHMENT, sales_record)
+        if not has_permission:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="销售附件只能在阶段一且由创建者本人删除"
+            )
+    elif attachment.attachment_type == AttachmentType.LOGISTICS.value:
+        # 检查后勤附件管理权限
+        has_permission = await permission_checker.has_permission(Action.MANAGE_LOGISTICS_ATTACHMENT, sales_record)
+        if not has_permission:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="后勤附件只能在阶段三且由具有后勤职能的人删除"
+            )
+    else:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"无效的附件类型: {attachment.attachment_type}"
         )
     
     stored_filename = attachment.stored_filename

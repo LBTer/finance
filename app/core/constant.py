@@ -9,8 +9,4 @@ class CustomerSource(str, Enum):
     EXHIBITION = "展会"
     GROUND = "地推"
     SELF_DEVELOPMENT = "自主开发"
-
-class ProductCategory(str, Enum):
-    FORGE_WHEEL = "锻造轮"
-    CAST_WHEEL = "铸造轮"
     

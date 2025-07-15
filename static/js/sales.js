@@ -2,9 +2,9 @@
 let currentPage = 1;
 let pageSize = 10;
 let totalItems = 0;
-let currentStatusFilter = '';
 let currentSearchQuery = '';
-let currentCategoryFilter = '';
+let currentStageFilter = '';
+let currentOrderTypeFilter = '';
 let currentUser = null;
 
 // 初始化销售记录页面
@@ -12,6 +12,9 @@ async function initSalesPage() {
   // 获取当前用户
   currentUser = await getCurrentUser();
   if (!currentUser) return;
+  
+  // 初始化 Bootstrap tooltips
+  initTooltips();
   
   // 加载销售记录列表
   loadSalesRecords();
@@ -28,10 +31,16 @@ async function initSalesPage() {
     filterForm.addEventListener('submit', handleFilterSubmit);
   }
   
-  // 绑定状态筛选器更改事件
-  const statusFilter = document.getElementById('status-filter');
-  if (statusFilter) {
-    statusFilter.addEventListener('change', handleStatusFilterChange);
+  // 绑定阶段筛选器更改事件
+  const stageFilter = document.getElementById('stage-filter');
+  if (stageFilter) {
+    stageFilter.addEventListener('change', handleStageFilterChange);
+  }
+  
+  // 绑定订单类型筛选器更改事件
+  const orderTypeFilter = document.getElementById('order-type-filter');
+  if (orderTypeFilter) {
+    orderTypeFilter.addEventListener('change', handleOrderTypeFilterChange);
   }
   
   // 绑定分页事件
@@ -48,8 +57,17 @@ async function initSalesPage() {
     saveButton.addEventListener('click', handleSaveSales);
   }
   
-  // 绑定利润计算相关字段的事件监听器
-  bindProfitCalculationEvents();
+  // 绑定编辑运费保存按钮事件
+  const saveShippingFeeBtn = document.getElementById('save-shipping-fee-btn');
+  if (saveShippingFeeBtn) {
+    saveShippingFeeBtn.addEventListener('click', saveEditedShippingFee);
+  }
+  
+  // 绑定编辑采购保存按钮事件
+  const saveProcurementBtn = document.getElementById('save-procurement-btn');
+  if (saveProcurementBtn) {
+    saveProcurementBtn.addEventListener('click', saveEditedProcurement);
+  }
   
   // 绑定订单号验证事件
   bindOrderNumberValidation();
@@ -71,16 +89,43 @@ async function initSalesPage() {
     confirmDeleteButton.addEventListener('click', handleDeleteSales);
   }
   
-  // 绑定审核按钮事件
-  const approveBtn = document.getElementById('approve-btn');
-  const rejectBtn = document.getElementById('reject-btn');
-  if (approveBtn && rejectBtn) {
-    approveBtn.addEventListener('click', () => handleUpdateStatus('approved'));
-    rejectBtn.addEventListener('click', () => handleUpdateStatus('rejected'));
-  }
+  // 审核按钮已移除，现在使用表格中的阶段管理按钮
   
   // 检查URL参数，如果有id参数则打开对应记录详情
   checkUrlForRecordId();
+
+  // 添加下拉菜单事件监听器，解决显示层级问题
+  setupDropdownEventListeners();
+}
+
+// 设置下拉菜单事件监听器
+function setupDropdownEventListeners() {
+  // 使用事件委托监听下拉菜单的显示/隐藏
+  document.addEventListener('shown.bs.dropdown', function(event) {
+    // 下拉菜单显示时，设置容器overflow为visible
+    const tableResponsive = document.querySelector('.table-responsive');
+    const cardBody = document.querySelector('.card-body');
+    
+    if (tableResponsive) {
+      tableResponsive.classList.add('dropdown-open');
+    }
+    if (cardBody) {
+      cardBody.classList.add('dropdown-open');
+    }
+  });
+
+  document.addEventListener('hidden.bs.dropdown', function(event) {
+    // 下拉菜单隐藏时，恢复容器的overflow属性
+    const tableResponsive = document.querySelector('.table-responsive');
+    const cardBody = document.querySelector('.card-body');
+    
+    if (tableResponsive) {
+      tableResponsive.classList.remove('dropdown-open');
+    }
+    if (cardBody) {
+      cardBody.classList.remove('dropdown-open');
+    }
+  });
 }
 
 // 检查URL是否包含记录ID参数
@@ -105,23 +150,23 @@ async function loadSalesRecords() {
       limit: pageSize
     });
     
-    if (currentStatusFilter) {
-      queryParams.append('status', currentStatusFilter);
+    if (currentStageFilter) {
+      queryParams.append('stage', currentStageFilter);
+    }
+    
+    if (currentOrderTypeFilter) {
+      queryParams.append('order_type', currentOrderTypeFilter);
     }
     
     if (currentSearchQuery) {
       queryParams.append('search', currentSearchQuery);
     }
     
-    if (currentCategoryFilter) {
-      queryParams.append('category', currentCategoryFilter);
-    }
-    
     const records = await apiRequest(`/sales?${queryParams.toString()}`, { method: 'GET' });
     if (!records) return;
     
     // 更新总条数
-    totalItems = records.length; // 假设返回的是列表，实际可能需要调整
+    totalItems = records.length; // 注意：这里应该是当前页的记录数，分页可能需要调整
     updatePagination();
     
     // 渲染表格
@@ -142,49 +187,74 @@ function renderSalesTable(sales) {
   
   if (!sales || sales.length === 0) {
     const row = document.createElement('tr');
-    row.innerHTML = `<td colspan="13" class="text-center">暂无数据</td>`;
+    row.innerHTML = `<td colspan="11" class="text-center">暂无数据</td>`;
     tableBody.appendChild(row);
     return;
   }
   
   // 添加每一行
   sales.forEach(sale => {
-    // 权限控制：
-    // - 超级管理员可以看到所有记录
-    // - 高级用户可以看到自己和普通用户的记录
-    // - 普通用户只能看到自己的记录
-    if (currentUser.role === 'normal' && sale.user_id !== currentUser.id) {
-      return;
-    }
-    if (currentUser.role === 'senior' && sale.user_id !== currentUser.id && sale.user.role !== 'normal') {
-      return;
-    }
+    // 权限控制：所有用户都可以看到所有记录
     
     const row = document.createElement('tr');
     
-    // 状态显示样式
-    const statusClass = {
-      'pending': 'text-warning',
-      'approved': 'text-success',
-      'rejected': 'text-danger'
-    }[sale.status] || 'text-secondary';
+    // 阶段显示样式和文本
+    const stageClass = {
+      'stage_1': 'text-info',
+      'stage_2': 'text-warning', 
+      'stage_3': 'text-primary',
+      'stage_4': 'text-warning',
+      'stage_5': 'text-success'
+    }[sale.stage] || 'text-secondary';
     
-    const statusText = {
-      'pending': '待审核',
-      'approved': '已审核',
-      'rejected': '已拒绝'
-    }[sale.status] || '未知';
+    const stageText = {
+      'stage_1': '初步信息补充',
+      'stage_2': '待初步审核', 
+      'stage_3': '运费等信息补充',
+      'stage_4': '待最终审核',
+      'stage_5': '审核完成'
+    }[sale.stage] || '未知阶段';
     
-    // 控制操作按钮显示 - 根据权限决定是否可以修改或删除
-    // - 超级管理员可以修改和删除所有记录
-    // - 高级用户可以修改和删除自己的记录和普通用户的记录
-    // - 普通用户只能修改和删除自己的待审核记录（不能修改已审核的记录）
-    const canModify = (currentUser.role === 'admin') || 
-                     (currentUser.role === 'senior' && (sale.user_id === currentUser.id || sale.user.role === 'normal')) ||
-                     (currentUser.role === 'normal' && sale.user_id === currentUser.id && sale.status === 'pending');
+    // 权限控制逻辑 - 根据新的审核流程
+    const isCreator = sale.user_id === currentUser.id;
+    const hasAdminRole = currentUser.role === 'admin' || currentUser.is_superuser;
+    const hasSeniorRole = currentUser.role === 'senior';
+    const hasLogisticsFunction = hasAdminRole || hasSeniorRole || 
+                                 (currentUser.role === 'normal' && 
+                                  (currentUser.function === 'logistics' || currentUser.function === 'sales_logistics'));
+    const hasSalesFunction = hasAdminRole || hasSeniorRole || 
+                            (currentUser.role === 'normal' && 
+                             (currentUser.function === 'sales' || currentUser.function === 'sales_logistics'));
     
-    // 控制审核按钮显示 - 只有高级用户和管理员可以审核
-    const canApprove = currentUser.role !== 'normal' && sale.status === 'pending';
+    // 各种操作权限判断
+    const canView = true; // 所有用户都可以查看
+    
+    // 修改权限：阶段一（创建者），阶段三（后勤职能），管理员/高级用户（所有）
+    const canModify = hasAdminRole || hasSeniorRole || 
+                     (sale.stage === 'stage_1' && isCreator && hasSalesFunction) ||
+                     (sale.stage === 'stage_3' && hasLogisticsFunction);
+    
+    // 删除权限：只有阶段一且是创建者
+    const canDelete = hasAdminRole || hasSeniorRole ||
+                     (sale.stage === 'stage_1' && isCreator && hasSalesFunction);
+    
+    // 提交权限：阶段一到阶段二（创建者），阶段三到阶段四（后勤职能）
+    // 注意：阶段二不能提交，只能审核通过后自动进入阶段三
+    const canSubmit = (hasAdminRole || hasSeniorRole) ? 
+                     (sale.stage === 'stage_1' || sale.stage === 'stage_3') : 
+                     ((sale.stage === 'stage_1' && isCreator && hasSalesFunction) ||
+                      (sale.stage === 'stage_3' && hasLogisticsFunction));
+    
+    // 审核权限：阶段二到阶段三（后勤职能），阶段四到阶段五（高级用户/管理员）
+    const canApprove = (sale.stage === 'stage_2' && hasLogisticsFunction) ||
+                      (sale.stage === 'stage_4' && (hasAdminRole || hasSeniorRole));
+    
+    // 撤回权限：复杂的撤回逻辑
+    const canWithdraw = hasAdminRole || hasSeniorRole ||
+                       (sale.stage === 'stage_2' && isCreator && hasSalesFunction) ||
+                       (sale.stage === 'stage_3' && hasLogisticsFunction) ||
+                       (sale.stage === 'stage_4' && hasLogisticsFunction) ||
+                       (sale.stage === 'stage_5' && (hasAdminRole || hasSeniorRole));
     
     // 格式化日期时间
     const formatDateTime = (dateStr) => {
@@ -205,42 +275,94 @@ function renderSalesTable(sales) {
       ? `<span class="badge bg-primary">${attachmentCount}</span>` 
       : '<span class="text-muted">-</span>';
     
+    // 根据订单来源生成订单号前缀
+    const sourcePrefix = {
+      'alibaba': '阿里',
+      'domestic': '国内',
+      'exhibition': '展会'
+    };
+    const prefix = sourcePrefix[sale.order_source] || '未知';
+    
     row.innerHTML = `
-      <td>${sale.order_number}</td>
-      <td>${sale.product_name}</td>
-      <td>${sale.category || '-'}</td>
-      <td>${sale.quantity}</td>
-      <td>$${sale.unit_price.toFixed(2)}</td>
+      <td>#${prefix}-${sale.id || 'N/A'}</td>
+      <td>${sale.order_number || '-'}</td>
+      <td>${sale.product_name || '-'}</td>
+      <td>${sale.quantity || '0'}</td>
+      <td>$${sale.unit_price ? sale.unit_price.toFixed(2) : '0.00'}</td>
       <td>$${sale.total_price ? sale.total_price.toFixed(2) : '0.00'}</td>
-      <td>${sale.exchange_rate ? sale.exchange_rate.toFixed(4) : '7.0000'}</td>
-      <td>${sale.logistics_company || '-'}</td>
-      <td>¥${sale.profit ? sale.profit.toFixed(2) : '0.00'}</td>
-      <td><span class="${statusClass}">${statusText}</span></td>
+      <td><span class="${stageClass}">${stageText}</span></td>
       <td class="text-center">${attachmentBadge}</td>
       <td>${sale.user ? sale.user.full_name : '-'}</td>
-      <td>${sale.approved_by ? sale.approved_by.full_name : '-'}</td>
       <td>${formatDateTime(sale.created_at)}</td>
       <td>
-        <button class="btn btn-sm btn-info table-action-btn" onclick="showSalesDetails('${sale.id}')">
-          <i class="bi bi-eye"></i> 查看
-        </button>
-        ${canModify ? `
-          <button class="btn btn-sm btn-primary table-action-btn" onclick="showEditModal('${sale.id}')">
-            <i class="bi bi-pencil"></i> 修改
+        <div class="d-flex align-items-center gap-1">
+          <!-- 主要操作：查看（始终显示） -->
+          <button class="btn btn-sm btn-info" onclick="showSalesDetails('${sale.id}')" title="查看详情">
+            <i class="bi bi-eye"></i>
           </button>
-          <button class="btn btn-sm btn-danger table-action-btn" onclick="showDeleteModal('${sale.id}')">
-            <i class="bi bi-trash"></i> 删除
-          </button>
-        ` : (currentUser.role === 'normal' && sale.user_id === currentUser.id && sale.status !== 'pending') ? `
-          <span class="text-muted small">
-            <i class="bi bi-lock"></i> 已审核，不可修改
-          </span>
-        ` : ''}
-        ${canApprove ? `
-          <button class="btn btn-sm btn-success table-action-btn" onclick="showApproveModal('${sale.id}')">
-            <i class="bi bi-check-circle"></i> 审核
-          </button>
-        ` : ''}
+          
+          <!-- 主要操作：修改（根据权限显示） -->
+          ${canModify ? `
+            <button class="btn btn-sm btn-primary" onclick="showEditModal('${sale.id}')" title="修改记录">
+              <i class="bi bi-pencil"></i>
+            </button>
+          ` : ''}
+          
+          <!-- 更多操作下拉菜单 -->
+          ${(canDelete || canSubmit || canApprove || canWithdraw) ? `
+            <div class="dropdown">
+              <button class="btn btn-sm btn-secondary dropdown-toggle" type="button" data-bs-toggle="dropdown" aria-expanded="false" title="更多操作">
+                <i class="bi bi-three-dots"></i>
+              </button>
+              <ul class="dropdown-menu dropdown-menu-end">
+                ${canSubmit ? `
+                  <li>
+                    <a class="dropdown-item" href="#" onclick="confirmAndSubmitRecord('${sale.id}', '${sale.stage}')">
+                      <i class="bi bi-upload text-warning"></i> 
+                      ${sale.stage === 'stage_1' ? '提交审核' : '提交最终审核'}
+                    </a>
+                  </li>
+                ` : ''}
+                
+                ${canApprove ? `
+                  <li>
+                    <a class="dropdown-item" href="#" onclick="confirmAndApproveRecord('${sale.id}', '${sale.stage}')">
+                      <i class="bi bi-check-circle text-success"></i> 
+                      ${sale.stage === 'stage_2' ? '初步审核通过' : '最终审核通过'}
+                    </a>
+                  </li>
+                ` : ''}
+                
+                ${canWithdraw ? `
+                  <li>
+                    <a class="dropdown-item" href="#" onclick="confirmAndWithdrawRecord('${sale.id}', '${sale.stage}')">
+                      <i class="bi bi-arrow-counterclockwise text-secondary"></i> 撤回记录
+                    </a>
+                  </li>
+                ` : ''}
+                
+                ${canDelete ? `
+                  ${(canSubmit || canApprove || canWithdraw) ? '<li><hr class="dropdown-divider"></li>' : ''}
+                  <li>
+                    <a class="dropdown-item text-danger" href="#" onclick="confirmAndDeleteRecord('${sale.id}')">
+                      <i class="bi bi-trash"></i> 删除记录
+                    </a>
+                  </li>
+                ` : ''}
+              </ul>
+            </div>
+          ` : ''}
+          
+          <!-- 状态提示 - 当用户无任何操作权限时显示 -->
+          ${!canModify && !canSubmit && !canApprove && !canWithdraw && !canDelete ? `
+            <span class="text-muted small">
+              <i class="bi bi-lock"></i> 
+              ${sale.stage === 'stage_2' ? '待审核' : 
+                sale.stage === 'stage_4' ? '待审核' : 
+                sale.stage === 'stage_5' ? '已完成' : '无权限'}
+            </span>
+          ` : ''}
+        </div>
       </td>
     `;
     
@@ -331,14 +453,21 @@ function handleNextPage(e) {
 function handleFilterSubmit(e) {
   e.preventDefault();
   currentSearchQuery = document.getElementById('search-input').value.trim();
-  currentCategoryFilter = document.getElementById('category-filter').value.trim();
+  
   currentPage = 1; // 重置为第一页
   loadSalesRecords();
 }
 
-// 处理状态筛选器更改
-function handleStatusFilterChange() {
-  currentStatusFilter = document.getElementById('status-filter').value;
+// 处理阶段筛选器更改
+function handleStageFilterChange() {
+  currentStageFilter = document.getElementById('stage-filter').value;
+  currentPage = 1; // 重置为第一页
+  loadSalesRecords();
+}
+
+// 处理订单类型筛选器更改
+function handleOrderTypeFilterChange() {
+  currentOrderTypeFilter = document.getElementById('order-type-filter').value;
   currentPage = 1; // 重置为第一页
   loadSalesRecords();
 }
@@ -375,11 +504,15 @@ function showAddSalesModal() {
     orderNumberInput.disabled = false;
   }
   
+  // 清空并禁用订单号字段（新增时系统还未生成）
+  const orderIdInput = document.getElementById('order-id');
+  if (orderIdInput) {
+    orderIdInput.value = '创建后自动生成';
+    orderIdInput.disabled = true;
+  }
+  
   // 清除订单号验证状态
   clearOrderNumberValidation();
-  
-  // 重新绑定利润计算事件并计算利润
-  bindProfitCalculationEvents();
   
   // 显示模态框
   const modal = new bootstrap.Modal(document.getElementById('sales-modal'));
@@ -425,23 +558,72 @@ async function showEditSalesModal(id) {
     }
     
     // 填充表单数据
-    document.getElementById('order-number').value = record.order_number;
-    document.getElementById('product-name').value = record.product_name;
-    document.getElementById('category').value = record.category || '';
-    document.getElementById('quantity').value = record.quantity;
-    document.getElementById('unit-price').value = record.unit_price;
-    document.getElementById('total-price').value = record.total_price;
-    document.getElementById('exchange-rate').value = record.exchange_rate || 7.0000;
-    document.getElementById('domestic-shipping-fee').value = record.domestic_shipping_fee || 0;
-    document.getElementById('overseas-shipping-fee').value = record.overseas_shipping_fee || 0;
-    document.getElementById('logistics-company').value = record.logistics_company || '';
-    document.getElementById('refund-amount').value = record.refund_amount || 0;
-    document.getElementById('tax-refund').value = record.tax_refund || 0;
-    document.getElementById('profit').value = record.profit || 0;
-    document.getElementById('remarks').value = record.remarks || '';
+    const orderNumberEl = document.getElementById('order-number');
+    const orderIdEl = document.getElementById('order-id');
+    const orderTypeEl = document.getElementById('order-type');
+    const orderSourceEl = document.getElementById('order-source');
+    const productNameEl = document.getElementById('product-name');
+    const quantityEl = document.getElementById('quantity');
+    const unitPriceEl = document.getElementById('unit-price');
+    const totalPriceEl = document.getElementById('total-price');
+    const remarksEl = document.getElementById('remarks');
     
-    // 禁用订单编号字段（不允许修改）
-    document.getElementById('order-number').disabled = true;
+    // 根据阶段控制字段的可编辑性 - 按照需求文档重新设计
+    const isStageOne = record.stage === 'stage_1';
+    const isStageThree = record.stage === 'stage_3';
+    const canModify = isStageOne || isStageThree; // 只有阶段一、三可以修改
+    
+    // 订单号：始终置灰不可修改（系统自动生成格式：#来源-ID）
+    if (orderIdEl) {
+      const sourcePrefix = {
+        'alibaba': '阿里',
+        'domestic': '国内',
+        'exhibition': '展会'
+      };
+      const prefix = sourcePrefix[record.order_source] || '未知';
+      orderIdEl.value = `#${prefix}-${record.id}`;
+      orderIdEl.disabled = true; // 订单号始终不可修改
+    }
+    
+    // 订单编号：阶段一可修改，其他阶段不可修改
+    if (orderNumberEl) {
+      orderNumberEl.value = record.order_number;
+      orderNumberEl.disabled = !isStageOne; // 只有阶段一可以修改订单编号
+    }
+    
+    // 订单类型和来源：阶段一可修改，阶段三及以上置灰
+    if (orderTypeEl) {
+      orderTypeEl.value = record.order_type || '';
+      orderTypeEl.disabled = !isStageOne; // 只有阶段一可以修改
+    }
+    if (orderSourceEl) {
+      orderSourceEl.value = record.order_source || '';
+      orderSourceEl.disabled = !isStageOne; // 只有阶段一可以修改
+    }
+    
+    // 产品信息：阶段一可修改，阶段三及以上置灰
+    if (productNameEl) {
+      productNameEl.value = record.product_name;
+      productNameEl.disabled = !isStageOne; // 只有阶段一可以修改
+    }
+    if (quantityEl) {
+      quantityEl.value = record.quantity;
+      quantityEl.disabled = !isStageOne; // 只有阶段一可以修改
+    }
+    if (unitPriceEl) {
+      unitPriceEl.value = record.unit_price;
+      unitPriceEl.disabled = !isStageOne; // 只有阶段一可以修改
+    }
+    if (totalPriceEl) {
+      totalPriceEl.value = record.total_price;
+      totalPriceEl.disabled = !isStageOne; // 只有阶段一可以修改
+    }
+    
+    // 备注：阶段一、三都可以修改
+    if (remarksEl) {
+      remarksEl.value = record.remarks || '';
+      remarksEl.disabled = !canModify; // 阶段一、三可以修改
+    }
     
     // 只清理附件表单DOM元素，不重置状态（编辑模式下需要保持状态）
     if (window.attachmentsManager) {
@@ -467,8 +649,19 @@ async function showEditSalesModal(id) {
       console.log('编辑模式：只清理DOM元素，保持状态变量');
     }
     
-    // 重新绑定利润计算事件并计算利润
-    bindProfitCalculationEvents();
+    // 根据阶段控制运费和采购信息管理区域的显示 - 按需求只在阶段三显示
+    const shippingFeesSection = document.getElementById('shipping-fees-section');
+    const procurementSection = document.getElementById('procurement-section');
+    
+    if (shippingFeesSection && procurementSection) {
+      if (isStageThree) {
+        shippingFeesSection.style.display = 'block';
+        procurementSection.style.display = 'block';
+      } else {
+        shippingFeesSection.style.display = 'none';
+        procurementSection.style.display = 'none';
+      }
+    }
     
     // 显示模态框
     const modal = new bootstrap.Modal(document.getElementById('sales-modal'));
@@ -484,21 +677,49 @@ async function showEditSalesModal(id) {
       if (editAttachmentsContainer) editAttachmentsContainer.style.display = 'block';
       if (newRecordAttachments) newRecordAttachments.style.display = 'none';
       
-      // 检查编辑权限：高级用户和超级管理员可以在任何状态下管理附件
-      const canEditAttachments = (currentUser.role === 'admin' || currentUser.role === 'senior') ||
-                                 (currentUser.id === record.user_id && record.status === 'pending');
+      // 根据阶段和用户权限检查附件编辑权限
+      const hasAdminRole = currentUser.role === 'admin' || currentUser.is_superuser;
+      const hasSeniorRole = currentUser.role === 'senior';
+      const hasLogisticsFunction = hasAdminRole || hasSeniorRole || 
+                                   (currentUser.role === 'normal' && 
+                                    (currentUser.function === 'logistics' || currentUser.function === 'sales_logistics'));
+      const hasSalesFunction = hasAdminRole || hasSeniorRole || 
+                              (currentUser.role === 'normal' && 
+                               (currentUser.function === 'sales' || currentUser.function === 'sales_logistics'));
+      
+      // 附件编辑权限：
+      // 阶段一：创建者可以编辑销售附件
+      // 阶段三：具有后勤职能的用户可以编辑后勤附件
+      // 管理员/高级用户：可以在任何阶段编辑附件
+      let canEditAttachments = false;
+      if (hasAdminRole || hasSeniorRole) {
+        canEditAttachments = true;
+      } else if (record.stage === 'stage_1' && record.user_id === currentUser.id && hasSalesFunction) {
+        canEditAttachments = true;
+      } else if (record.stage === 'stage_3' && hasLogisticsFunction) {
+        canEditAttachments = true;
+      }
       
       // 根据权限显示上传区域
       if (editUploadArea) {
         editUploadArea.style.display = canEditAttachments ? 'block' : 'none';
       }
       
-      console.log('编辑模式附件权限:', canEditAttachments, '用户角色:', currentUser.role, '记录状态:', record.status);
+      console.log('编辑模式附件权限:', canEditAttachments, '用户角色:', currentUser.role, '记录阶段:', record.stage);
       console.log('编辑模式：使用已获取的记录数据，附件数量:', record.attachments ? record.attachments.length : 0);
       
       // 直接使用已获取的记录数据，避免重复请求
       if (window.attachmentsManager) {
-        await window.attachmentsManager.loadAttachments(record.id, canEditAttachments, true); // 明确指定为编辑模式
+        await window.attachmentsManager.loadAttachments(record.id, canEditAttachments, true, record); // 明确指定为编辑模式，传递记录信息
+      }
+      
+      // 如果是阶段三，直接使用记录中的运费和采购信息
+      if (isStageThree) {
+        // 直接使用已获取的运费和采购信息，避免额外的API请求
+        displayShippingFees(record.shipping_fees || [], record.stage);
+        displayProcurement(record.procurement || [], record.stage);
+        bindShippingFeesEvents(record.stage);
+        bindProcurementEvents(record.stage);
       }
     }, { once: true });
   } catch (error) {
@@ -509,6 +730,8 @@ async function showEditSalesModal(id) {
 
 // 处理保存销售记录
 async function handleSaveSales() {
+  console.log('开始保存销售记录...');
+  
   // 验证表单
   const form = document.getElementById('sales-form');
   if (!form || !form.checkValidity()) {
@@ -516,34 +739,63 @@ async function handleSaveSales() {
     return;
   }
   
+  console.log('表单验证通过');
+  
   // 获取表单数据
   const recordId = document.getElementById('record-id').value;
   const isEdit = !!recordId;
-  
-  // 确保利润已经计算
-  calculateProfit();
   
   try {
     let response;
     
     if (isEdit) {
-      // 更新现有记录
-      const formData = {
-        order_number: document.getElementById('order-number').value.trim(),
-        product_name: document.getElementById('product-name').value.trim(),
-        category: document.getElementById('category').value.trim() || null,
-        quantity: parseInt(document.getElementById('quantity').value),
-        unit_price: parseFloat(document.getElementById('unit-price').value),
-        total_price: parseFloat(document.getElementById('total-price').value),
-        exchange_rate: parseFloat(document.getElementById('exchange-rate').value) || 7.0000,
-        domestic_shipping_fee: parseFloat(document.getElementById('domestic-shipping-fee').value) || 0,
-        overseas_shipping_fee: parseFloat(document.getElementById('overseas-shipping-fee').value) || 0,
-        logistics_company: document.getElementById('logistics-company').value.trim() || null,
-        refund_amount: parseFloat(document.getElementById('refund-amount').value) || 0,
-        tax_refund: parseFloat(document.getElementById('tax-refund').value) || 0,
-        profit: parseFloat(document.getElementById('profit').value) || 0,
-        remarks: document.getElementById('remarks').value.trim() || null
-      };
+      // 首先获取当前记录信息以确定阶段
+      const currentRecord = await apiRequest(`/sales/${recordId}`, { method: 'GET' });
+      if (!currentRecord) {
+        throw new Error('无法获取记录信息');
+      }
+      
+      const isStageThree = currentRecord.stage === 'stage_3';
+      
+      // 更新现有记录 - 根据阶段控制字段
+      const orderNumberEl = document.getElementById('order-number');
+      const orderTypeEl = document.getElementById('order-type');
+      const orderSourceEl = document.getElementById('order-source');
+      const productNameEl = document.getElementById('product-name');
+      const quantityEl = document.getElementById('quantity');
+      const unitPriceEl = document.getElementById('unit-price');
+      const totalPriceEl = document.getElementById('total-price');
+      const remarksEl = document.getElementById('remarks');
+      
+      let formData = {};
+      
+      if (currentRecord.stage === 'stage_1') {
+        // 阶段一：可以修改所有创建时信息（包括订单编号）
+        if (!orderNumberEl || !orderTypeEl || !orderSourceEl || !productNameEl || !quantityEl || !unitPriceEl || !totalPriceEl) {
+          throw new Error('表单元素缺失，无法保存');
+        }
+        
+        formData = {
+          order_number: orderNumberEl.value.trim(),
+          order_type: orderTypeEl.value,
+          order_source: orderSourceEl.value,
+          product_name: productNameEl.value.trim(),
+          quantity: parseInt(quantityEl.value),
+          unit_price: parseFloat(unitPriceEl.value),
+          total_price: parseFloat(totalPriceEl.value),
+          remarks: remarksEl ? remarksEl.value.trim() || null : null
+        };
+        console.log('阶段一编辑：保存所有基本信息');
+      } else if (currentRecord.stage === 'stage_3') {
+        // 阶段三：只能修改备注
+        formData = {
+          remarks: remarksEl ? remarksEl.value.trim() || null : null
+        };
+        console.log('阶段三编辑：只保存备注');
+      } else {
+        // 其他阶段：不允许修改任何内容
+        throw new Error('当前阶段不允许修改记录');
+      }
       
       // 先更新销售记录
       response = await apiRequest(`/sales/${recordId}`, {
@@ -590,31 +842,32 @@ async function handleSaveSales() {
         }
       }
     } else {
-      // 创建新记录，支持文件上传
+      // 创建新记录 - 简化字段
       const formData = new FormData();
       
       // 添加基本字段
-      formData.append('order_number', document.getElementById('order-number').value.trim());
-      formData.append('product_name', document.getElementById('product-name').value.trim());
+      const orderNumberEl = document.getElementById('order-number');
+      const orderTypeEl = document.getElementById('order-type');
+      const orderSourceEl = document.getElementById('order-source');
+      const productNameEl = document.getElementById('product-name');
+      const quantityEl = document.getElementById('quantity');
+      const unitPriceEl = document.getElementById('unit-price');
+      const totalPriceEl = document.getElementById('total-price');
+      const remarksEl = document.getElementById('remarks');
       
-      const category = document.getElementById('category').value.trim();
-      if (category) formData.append('category', category);
+      if (!orderNumberEl || !orderTypeEl || !orderSourceEl || !productNameEl || !quantityEl || !unitPriceEl || !totalPriceEl) {
+        throw new Error('表单元素缺失，无法保存');
+      }
       
-      formData.append('quantity', parseInt(document.getElementById('quantity').value));
-      formData.append('unit_price', parseFloat(document.getElementById('unit-price').value));
-      formData.append('total_price', parseFloat(document.getElementById('total-price').value));
-      formData.append('exchange_rate', parseFloat(document.getElementById('exchange-rate').value) || 7.0000);
-      formData.append('domestic_shipping_fee', parseFloat(document.getElementById('domestic-shipping-fee').value) || 0);
-      formData.append('overseas_shipping_fee', parseFloat(document.getElementById('overseas-shipping-fee').value) || 0);
+      formData.append('order_number', orderNumberEl.value.trim());
+      formData.append('order_type', orderTypeEl.value);
+      formData.append('order_source', orderSourceEl.value);
+      formData.append('product_name', productNameEl.value.trim());
+      formData.append('quantity', parseInt(quantityEl.value));
+      formData.append('unit_price', parseFloat(unitPriceEl.value));
+      formData.append('total_price', parseFloat(totalPriceEl.value));
       
-      const logisticsCompany = document.getElementById('logistics-company').value.trim();
-      if (logisticsCompany) formData.append('logistics_company', logisticsCompany);
-      
-      formData.append('refund_amount', parseFloat(document.getElementById('refund-amount').value) || 0);
-      formData.append('tax_refund', parseFloat(document.getElementById('tax-refund').value) || 0);
-      formData.append('profit', parseFloat(document.getElementById('profit').value) || 0);
-      
-      const remarks = document.getElementById('remarks').value.trim();
+      const remarks = remarksEl ? remarksEl.value.trim() : '';
       if (remarks) formData.append('remarks', remarks);
       
       // 添加文件（如果有）
@@ -661,29 +914,17 @@ async function handleSaveSales() {
   }
 }
 
-// 显示删除确认对话框
-function showDeleteConfirm(id, orderNumber) {
-  // 设置要删除的记录ID
-  document.getElementById('delete-order-number').textContent = orderNumber;
-  
-  // 绑定删除按钮数据
-  const confirmDeleteButton = document.getElementById('confirm-delete-btn');
-  confirmDeleteButton.dataset.recordId = id;
-  
-  // 显示模态框
-  const modal = new bootstrap.Modal(document.getElementById('delete-modal'));
-  modal.show();
-}
+
 
 // 处理删除销售记录
 async function handleDeleteSales() {
   const confirmDeleteButton = document.getElementById('confirm-delete-btn');
-  const orderNumber = confirmDeleteButton.dataset.orderNumber;
+  const recordId = confirmDeleteButton.dataset.recordId;
   
-  if (!orderNumber) return;
+  if (!recordId) return;
   
   try {
-    const response = await apiRequest(`/sales/${orderNumber}`, { method: 'DELETE' });
+    const response = await apiRequest(`/sales/${recordId}`, { method: 'DELETE' });
     
     if (response) {
       // 隐藏模态框
@@ -703,7 +944,7 @@ async function handleDeleteSales() {
 }
 
 // 显示销售记录详情
-async function showSalesDetails(id, showApproveButtons = false) {
+async function showSalesDetails(id) {
   try {
     // 获取记录详情
     const record = await apiRequest(`/sales/${id}`, { method: 'GET' });
@@ -722,84 +963,78 @@ async function showSalesDetails(id, showApproveButtons = false) {
       });
     };
     
-    // 填充详情
-    document.getElementById('detail-order-number').textContent = record.order_number;
-    document.getElementById('detail-product-name').textContent = record.product_name;
-    document.getElementById('detail-category').textContent = record.category || '-';
-    document.getElementById('detail-quantity').textContent = record.quantity;
-    document.getElementById('detail-unit-price').textContent = parseFloat(record.unit_price).toFixed(2);
-    document.getElementById('detail-total-price').textContent = parseFloat(record.total_price || 0).toFixed(2);
-    document.getElementById('detail-exchange-rate').textContent = parseFloat(record.exchange_rate || 7.0).toFixed(4);
-    document.getElementById('detail-domestic-shipping-fee').textContent = parseFloat(record.domestic_shipping_fee || 0).toFixed(2);
-    document.getElementById('detail-overseas-shipping-fee').textContent = parseFloat(record.overseas_shipping_fee || 0).toFixed(2);
-    document.getElementById('detail-logistics-company').textContent = record.logistics_company || '-';
-    document.getElementById('detail-refund-amount').textContent = parseFloat(record.refund_amount || 0).toFixed(2);
-    document.getElementById('detail-tax-refund').textContent = parseFloat(record.tax_refund || 0).toFixed(2);
-    document.getElementById('detail-profit').textContent = parseFloat(record.profit || 0).toFixed(2);
-    document.getElementById('detail-total-amount').textContent = parseFloat(record.total_amount || 0).toFixed(2);
+    // 填充详情 - 只显示核心字段
+    const setElementText = (id, text) => {
+      const element = document.getElementById(id);
+      if (element) element.textContent = text;
+    };
     
-    // 显示利润计算过程
-    const totalPrice = parseFloat(record.total_price || 0);
-    const exchangeRate = parseFloat(record.exchange_rate || 7.0);
-    const domesticShippingFee = parseFloat(record.domestic_shipping_fee || 0);
-    const overseasShippingFee = parseFloat(record.overseas_shipping_fee || 0);
-    const refundAmount = parseFloat(record.refund_amount || 0);
-    const taxRefund = parseFloat(record.tax_refund || 0);
-    const calculatedProfit = (totalPrice * exchangeRate) - domesticShippingFee - overseasShippingFee - refundAmount + taxRefund;
+    setElementText('detail-order-number', record.order_number);
+    setElementText('detail-product-name', record.product_name);
+    setElementText('detail-quantity', record.quantity);
+    setElementText('detail-unit-price', parseFloat(record.unit_price).toFixed(2));
+    setElementText('detail-total-price', parseFloat(record.total_price || 0).toFixed(2));
+    setElementText('detail-remarks', record.remarks || '-');
     
-    const detailProfitCalculation = document.getElementById('detail-profit-calculation');
-    if (detailProfitCalculation) {
-      detailProfitCalculation.textContent = 
-        `计算过程：${totalPrice.toFixed(2)} × ${exchangeRate.toFixed(4)} - ${domesticShippingFee.toFixed(2)} - ${overseasShippingFee.toFixed(2)} - ${refundAmount.toFixed(2)} + ${taxRefund.toFixed(2)} = ¥${calculatedProfit.toFixed(2)}`;
-    }
+    // 设置订单类型
+    const orderTypeText = {
+      'overseas': '海外订单',
+      'domestic': '国内订单'
+    }[record.order_type] || record.order_type || '-';
+    setElementText('detail-order-type', orderTypeText);
     
-    document.getElementById('detail-creator').textContent = record.user ? record.user.full_name : '-';
-    document.getElementById('detail-created-at').textContent = formatDateTime(record.created_at);
-    document.getElementById('detail-created-by').textContent = record.user ? record.user.full_name : '-';
-    document.getElementById('detail-approver').textContent = record.approved_by ? record.approved_by.full_name : '-';
-    document.getElementById('detail-approved-at').textContent = record.approved_at ? formatDateTime(record.approved_at) : '-';
-    document.getElementById('detail-remarks').textContent = record.remarks || '-';
+    // 设置订单来源
+    const orderSourceText = {
+      'alibaba': '阿里',
+      'domestic': '国内',
+      'exhibition': '展会'
+    }[record.order_source] || record.order_source || '-';
+    setElementText('detail-order-source', orderSourceText);
     
-    // 设置状态
+    setElementText('detail-creator', record.user ? record.user.full_name : '-');
+    setElementText('detail-created-at', formatDateTime(record.created_at));
+    setElementText('detail-created-by', record.user ? record.user.full_name : '-');
+    setElementText('detail-logistics-approver', record.logistics_approved_by ? record.logistics_approved_by.full_name : '-');
+    setElementText('detail-logistics-approved-at', record.logistics_approved_at ? formatDateTime(record.logistics_approved_at) : '-');
+    setElementText('detail-final-approver', record.final_approved_by ? record.final_approved_by.full_name : '-');
+    setElementText('detail-final-approved-at', record.final_approved_at ? formatDateTime(record.final_approved_at) : '-');
+    
+    // 设置阶段
     const statusElement = document.getElementById('detail-status');
-    const statusClass = {
-      'pending': 'text-warning',
-      'approved': 'text-success',
-      'rejected': 'text-danger'
-    }[record.status] || 'text-secondary';
+    const stageClass = {
+      'stage_1': 'text-info',
+      'stage_2': 'text-warning', 
+      'stage_3': 'text-primary',
+      'stage_4': 'text-warning',
+      'stage_5': 'text-success'
+    }[record.stage] || 'text-secondary';
     
-    const statusText = {
-      'pending': '待审核',
-      'approved': '已审核',
-      'rejected': '已拒绝'
-    }[record.status] || '未知';
+    const stageText = {
+      'stage_1': '初步信息补充',
+      'stage_2': '待初步审核', 
+      'stage_3': '运费等信息补充',
+      'stage_4': '待最终审核',
+      'stage_5': '审核完成'
+    }[record.stage] || '未知阶段';
     
-    statusElement.innerHTML = `<span class="${statusClass}">${statusText}</span>`;
+    statusElement.innerHTML = `<span class="${stageClass}">${stageText}</span>`;
     
-    // 控制审核按钮显示
-    const approveBtn = document.getElementById('approve-btn');
-    const rejectBtn = document.getElementById('reject-btn');
-    
-    if (approveBtn && rejectBtn) {
-      const canApprove = record.status === 'pending' && 
-                        (currentUser.role === 'admin' || currentUser.role === 'senior');
-      
-      approveBtn.style.display = canApprove && showApproveButtons ? 'inline-block' : 'none';
-      rejectBtn.style.display = canApprove && showApproveButtons ? 'inline-block' : 'none';
-      
-      // 设置要审核的记录ID
-      approveBtn.dataset.recordId = id;
-      rejectBtn.dataset.recordId = id;
-    }
+    // 审核按钮已移除，阶段操作现在通过表格中的按钮进行
     
     // 加载附件列表 - 查看模式下不允许编辑附件
     console.log('准备加载附件，attachmentsManager存在:', !!window.attachmentsManager);
     if (window.attachmentsManager) {
-      await window.attachmentsManager.loadAttachments(record.id, false, false); // 查看模式：只读
+      await window.attachmentsManager.loadAttachments(record.id, false, false, record); // 查看模式：只读，传递记录信息
     } else {
       console.error('attachmentsManager未找到');
       showToast('error', '附件管理器未初始化');
     }
+    
+    // 显示运费记录（只读）
+    displayDetailShippingFees(record.shipping_fees || []);
+    
+    // 显示采购记录（只读）
+    displayDetailProcurement(record.procurement || []);
     
     // 显示模态框
     const modal = new bootstrap.Modal(document.getElementById('details-modal'));
@@ -810,56 +1045,37 @@ async function showSalesDetails(id, showApproveButtons = false) {
   }
 }
 
-// 处理更新状态
-async function handleUpdateStatus(status) {
-  const button = status === 'approved' ? 
-                document.getElementById('approve-btn') : 
-                document.getElementById('reject-btn');
-  
-  const recordId = button.dataset.recordId;
-  if (!recordId) return;
-  
-  try {
-    const response = await apiRequest(`/sales/${recordId}`, {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ 
-        status
-        // 移除手动设置的审核字段，让后端自动处理
-      })
-    });
-    
-    if (response) {
-      // 隐藏模态框
-      const modal = bootstrap.Modal.getInstance(document.getElementById('details-modal'));
-      modal.hide();
-      
-      // 显示成功消息
-      const actionText = status === 'approved' ? '批准' : '拒绝';
-      showToast('success', `销售记录已${actionText}`);
-      
-      // 重新加载列表
-      loadSalesRecords();
-    }
-  } catch (error) {
-    console.error('更新销售记录状态失败:', error);
-    showToast('error', '更新状态失败，请稍后重试');
-  }
-}
+// handleUpdateStatus函数已移除，现在使用新的阶段管理函数：
+// handleSubmitRecord, handleApproveRecord, handleWithdrawRecord
 
-// 显示审核模态框
+// 显示销售记录详情（旧的审核模态框现在只是显示详情）
 function showApproveModal(orderNumber) {
-  showSalesDetails(orderNumber, true);
+  showSalesDetails(orderNumber);
 }
 
 // 显示删除模态框
-function showDeleteModal(orderNumber) {
+function showDeleteModal(recordId) {
+  // 从当前记录列表中找到对应的记录来生成正确的订单号显示
+  const tableRows = document.querySelectorAll('#sales-table tbody tr');
+  let displayOrderNumber = `#${recordId}`;
+  
+  // 尝试从表格中找到对应的记录以获取正确的前缀显示
+  tableRows.forEach(row => {
+    const cells = row.querySelectorAll('td');
+    if (cells.length > 0) {
+      const orderNumberCell = cells[0];
+      if (orderNumberCell.textContent.includes(`-${recordId}`)) {
+        displayOrderNumber = orderNumberCell.textContent;
+      }
+    }
+  });
+  
   // 设置要删除的记录订单号
-  document.getElementById('delete-order-number').textContent = orderNumber;
+  document.getElementById('delete-order-number').textContent = displayOrderNumber;
   
   // 绑定删除按钮数据
   const confirmDeleteButton = document.getElementById('confirm-delete-btn');
-  confirmDeleteButton.dataset.orderNumber = orderNumber;
+  confirmDeleteButton.dataset.recordId = recordId;
   
   // 显示模态框
   const modal = new bootstrap.Modal(document.getElementById('delete-modal'));
@@ -879,57 +1095,6 @@ window.showEditModal = showEditModal;
 window.showDeleteModal = showDeleteModal;
 window.showSalesDetails = showSalesDetails;
 window.showApproveModal = showApproveModal;
-
-// 绑定利润计算相关字段的事件监听器
-function bindProfitCalculationEvents() {
-  const fieldsToWatch = [
-    'total-price',
-    'exchange-rate', 
-    'domestic-shipping-fee',
-    'overseas-shipping-fee',
-    'refund-amount',
-    'tax-refund'
-  ];
-  
-  fieldsToWatch.forEach(fieldId => {
-    const field = document.getElementById(fieldId);
-    if (field) {
-      field.addEventListener('input', calculateProfit);
-      field.addEventListener('change', calculateProfit);
-    }
-  });
-  
-  // 初始计算一次
-  calculateProfit();
-}
-
-// 注意：attachmentsManager现在由attachments.js提供全局实例
-
-// 计算利润
-function calculateProfit() {
-  const totalPrice = parseFloat(document.getElementById('total-price')?.value) || 0;
-  const exchangeRate = parseFloat(document.getElementById('exchange-rate')?.value) || 7.0;
-  const domesticShippingFee = parseFloat(document.getElementById('domestic-shipping-fee')?.value) || 0;
-  const overseasShippingFee = parseFloat(document.getElementById('overseas-shipping-fee')?.value) || 0;
-  const refundAmount = parseFloat(document.getElementById('refund-amount')?.value) || 0;
-  const taxRefund = parseFloat(document.getElementById('tax-refund')?.value) || 0;
-  
-  // 计算利润：总价 × 汇率 - 运费(陆内) - 运费(海运) - 退款金额 + 退税金额
-  const profit = (totalPrice * exchangeRate) - domesticShippingFee - overseasShippingFee - refundAmount + taxRefund;
-  
-  // 更新利润字段
-  const profitField = document.getElementById('profit');
-  if (profitField) {
-    profitField.value = profit.toFixed(2);
-  }
-  
-  // 更新计算过程显示
-  const calculationDisplay = document.getElementById('profit-calculation');
-  if (calculationDisplay) {
-    calculationDisplay.textContent = 
-      `计算过程：${totalPrice.toFixed(2)} × ${exchangeRate.toFixed(4)} - ${domesticShippingFee.toFixed(2)} - ${overseasShippingFee.toFixed(2)} - ${refundAmount.toFixed(2)} + ${taxRefund.toFixed(2)} = ¥${profit.toFixed(2)}`;
-  }
-}
 
 // 订单号验证相关变量
 let orderNumberCheckTimeout = null;
@@ -1048,4 +1213,878 @@ function clearOrderNumberValidation() {
   }
   
   lastCheckedOrderNumber = '';
-} 
+}
+
+// 初始化Bootstrap tooltips
+function initTooltips() {
+  // 初始化所有带有 data-bs-toggle="tooltip" 的元素
+  const tooltipTriggerList = [].slice.call(document.querySelectorAll('[data-bs-toggle="tooltip"]'));
+  const tooltipList = tooltipTriggerList.map(function (tooltipTriggerEl) {
+    return new bootstrap.Tooltip(tooltipTriggerEl);
+  });
+}
+
+// ========== 新增的阶段管理函数 ==========
+
+// 处理提交记录到下一阶段（内部处理函数，不含确认逻辑）
+async function handleSubmitRecord(recordId, currentStage) {
+  const stageText = currentStage === 'stage_1' ? '初步审核' : '最终审核';
+
+  try {
+    showLoading(true);
+    
+    const response = await apiRequest(`/sales/${recordId}/submit`, {
+      method: 'POST'
+    });
+
+    if (response) {
+      showToast('success', `记录已成功提交到${stageText}阶段`);
+      await loadSalesRecords(); // 重新加载列表
+    }
+  } catch (error) {
+    console.error('提交记录失败:', error);
+    showToast('error', `提交失败：${error.message || '请稍后重试'}`);
+  } finally {
+    showLoading(false);
+  }
+}
+
+// 处理审核记录通过（内部处理函数，不含确认逻辑）
+async function handleApproveRecord(recordId, currentStage) {
+  const stageText = currentStage === 'stage_2' ? '初步审核' : '最终审核';
+
+  try {
+    showLoading(true);
+    
+    const response = await apiRequest(`/sales/${recordId}/approve`, {
+      method: 'POST'
+    });
+
+    if (response) {
+      showToast('success', `${stageText}已通过，记录已进入下一阶段`);
+      await loadSalesRecords(); // 重新加载列表
+    }
+  } catch (error) {
+    console.error('审核记录失败:', error);
+    showToast('error', `审核失败：${error.message || '请稍后重试'}`);
+  } finally {
+    showLoading(false);
+  }
+}
+
+// 处理撤回记录（内部处理函数，不含确认逻辑）
+async function handleWithdrawRecord(recordId, currentStage) {
+  let withdrawText = '';
+  
+  switch (currentStage) {
+    case 'stage_2':
+      withdrawText = '撤回到初步信息补充阶段';
+      break;
+    case 'stage_3':
+      withdrawText = '撤回到初步信息补充阶段';
+      break;
+    case 'stage_4':
+      withdrawText = '撤回到运费等信息补充阶段';
+      break;
+    case 'stage_5':
+      withdrawText = '撤回到运费等信息补充阶段';
+      break;
+    default:
+      showToast('error', '当前阶段无法撤回');
+      return;
+  }
+
+  try {
+    showLoading(true);
+    
+    const response = await apiRequest(`/sales/${recordId}/withdraw`, {
+      method: 'POST'
+    });
+
+    if (response) {
+      showToast('success', `记录已成功${withdrawText}`);
+      await loadSalesRecords(); // 重新加载列表
+    }
+  } catch (error) {
+    console.error('撤回记录失败:', error);
+    showToast('error', `撤回失败：${error.message || '请稍后重试'}`);
+  } finally {
+    showLoading(false);
+  }
+}
+
+// 显示/隐藏加载状态
+function showLoading(show) {
+  const spinner = document.querySelector('.loading-spinner');
+  if (spinner) {
+    spinner.style.display = show ? 'flex' : 'none';
+  }
+}
+
+// 暴露新函数给全局
+window.handleSubmitRecord = handleSubmitRecord;
+window.handleApproveRecord = handleApproveRecord;
+window.handleWithdrawRecord = handleWithdrawRecord;
+
+// ========== 更多操作的二次确认函数 ==========
+
+// 确认并提交记录
+async function confirmAndSubmitRecord(recordId, currentStage) {
+  const stageText = currentStage === 'stage_1' ? '初步审核' : '最终审核';
+  
+  // 显示确认对话框
+  const confirmed = confirm(`确定要提交此记录到${stageText}阶段吗？\n\n提交后将无法修改记录内容，需要等待相关人员审核。`);
+  
+  if (confirmed) {
+    await handleSubmitRecord(recordId, currentStage);
+  }
+}
+
+// 确认并审核记录
+async function confirmAndApproveRecord(recordId, currentStage) {
+  const stageText = currentStage === 'stage_2' ? '初步审核' : '最终审核';
+  
+  // 显示确认对话框
+  const confirmed = confirm(`确定要通过此记录的${stageText}吗？\n\n审核通过后记录将进入下一阶段，该操作不可撤销。`);
+  
+  if (confirmed) {
+    await handleApproveRecord(recordId, currentStage);
+  }
+}
+
+// 确认并撤回记录
+async function confirmAndWithdrawRecord(recordId, currentStage) {
+  let withdrawText = '';
+  let targetStage = '';
+  let confirmMessage = '';
+  
+  switch (currentStage) {
+    case 'stage_2':
+      withdrawText = '撤回到初步信息补充阶段';
+      targetStage = '阶段一';
+      confirmMessage = '撤回后记录将回到阶段一，销售人员可以重新修改和提交。';
+      break;
+    case 'stage_3':
+      withdrawText = '撤回到初步信息补充阶段';
+      targetStage = '阶段一';
+      confirmMessage = '撤回后记录将回到阶段一，之前的审核信息将被清除。';
+      break;
+    case 'stage_4':
+      withdrawText = '撤回到运费等信息补充阶段';
+      targetStage = '阶段三';
+      confirmMessage = '撤回后记录将回到阶段三，后勤人员可以重新修改和提交。';
+      break;
+    case 'stage_5':
+      withdrawText = '撤回到运费等信息补充阶段';
+      targetStage = '阶段三';
+      confirmMessage = '撤回后记录将回到阶段三，最终审核信息将被清除。';
+      break;
+    default:
+      alert('当前阶段无法撤回');
+      return;
+  }
+  
+  // 显示确认对话框
+  const confirmed = confirm(`确定要${withdrawText}吗？\n\n${confirmMessage}\n\n此操作不可撤销，请谨慎操作。`);
+  
+  if (confirmed) {
+    await handleWithdrawRecord(recordId, currentStage);
+  }
+}
+
+// 确认并删除记录
+async function confirmAndDeleteRecord(recordId) {
+  // 显示确认对话框
+  const confirmed = confirm(`确定要删除此销售记录吗？\n\n删除后将无法恢复，包括相关的附件文件也会被删除。\n\n请确认您有权限执行此操作。`);
+  
+  if (confirmed) {
+    // 再次确认（双重确认）
+    const doubleConfirmed = confirm(`请再次确认删除操作！\n\n这是最后的确认步骤，点击确定后记录将被永久删除。`);
+    
+    if (doubleConfirmed) {
+      showDeleteModal(recordId);
+    }
+  }
+}
+
+// 暴露新的确认函数给全局
+window.confirmAndSubmitRecord = confirmAndSubmitRecord;
+window.confirmAndApproveRecord = confirmAndApproveRecord;
+window.confirmAndWithdrawRecord = confirmAndWithdrawRecord;
+window.confirmAndDeleteRecord = confirmAndDeleteRecord;
+
+// ======================== 详情页面运费和采购记录显示（只读） ========================
+
+// 显示详情页面的运费记录（只读）
+function displayDetailShippingFees(shippingFees) {
+  const container = document.getElementById('detail-shipping-fees-list');
+  const noFeesDiv = document.getElementById('detail-no-shipping-fees');
+  
+  if (!container || !noFeesDiv) return;
+  
+  if (shippingFees.length === 0) {
+    noFeesDiv.style.display = 'block';
+    container.innerHTML = '';
+    return;
+  }
+  
+  noFeesDiv.style.display = 'none';
+  container.innerHTML = '';
+  
+  shippingFees.forEach(fee => {
+    const feeCard = document.createElement('div');
+    feeCard.className = 'card border-success mb-2';
+    feeCard.innerHTML = `
+      <div class="card-body py-2">
+        <div class="row align-items-center">
+          <div class="col-md-2">
+            <strong>${getLogisticsTypeName(fee.logistics_type)}</strong>
+          </div>
+          <div class="col-md-2">
+            <span class="badge bg-success">¥${fee.shipping_fee.toFixed(2)}</span>
+          </div>
+          <div class="col-md-2">
+            <small>${fee.payment_method}</small>
+          </div>
+          <div class="col-md-2">
+            <small>${fee.logistics_company}</small>
+          </div>
+                     <div class="col-md-2">
+             <small class="text-muted">${fee.remarks || '无备注'}</small>
+           </div>
+           <div class="col-md-2 text-center">
+             <span class="text-muted small">只读</span>
+           </div>
+        </div>
+      </div>
+    `;
+    container.appendChild(feeCard);
+  });
+}
+
+// 显示详情页面的采购记录（只读）
+function displayDetailProcurement(procurement) {
+  const container = document.getElementById('detail-procurement-list');
+  const noProcurementDiv = document.getElementById('detail-no-procurement');
+  
+  if (!container || !noProcurementDiv) return;
+  
+  if (procurement.length === 0) {
+    noProcurementDiv.style.display = 'block';
+    container.innerHTML = '';
+    return;
+  }
+  
+  noProcurementDiv.style.display = 'none';
+  container.innerHTML = '';
+  
+  procurement.forEach(item => {
+    const itemCard = document.createElement('div');
+    itemCard.className = 'card border-info mb-2';
+    itemCard.innerHTML = `
+      <div class="card-body py-2">
+        <div class="row">
+          <div class="col-md-3">
+            <div><strong>${item.procurement_item}</strong></div>
+            <small class="text-muted">供应商：${item.supplier}</small>
+          </div>
+          <div class="col-md-2">
+            <div>数量：${item.quantity}</div>
+            <span class="badge bg-info">¥${item.amount.toFixed(2)}</span>
+          </div>
+          <div class="col-md-2">
+            <div><strong>支付方式：</strong></div>
+            <small class="text-muted">${item.payment_method}</small>
+          </div>
+          <div class="col-md-3">
+            <div><strong>备注：</strong></div>
+            <small class="text-muted">${item.remarks || '无备注'}</small>
+          </div>
+          <div class="col-md-2 text-center">
+            <span class="text-muted small">只读</span>
+          </div>
+        </div>
+      </div>
+    `;
+    container.appendChild(itemCard);
+  });
+}
+
+// ======================== 运费信息管理 ========================
+
+// 加载运费信息
+async function loadShippingFees(salesRecordId, stage = null) {
+  try {
+    const shippingFees = await apiRequest(`/fees/sales-record/${salesRecordId}`, { method: 'GET' });
+    displayShippingFees(shippingFees || [], stage);
+  } catch (error) {
+    console.error('加载运费信息失败:', error);
+    displayShippingFees([], stage);
+  }
+}
+
+// 显示运费信息
+function displayShippingFees(shippingFees, stage = null) {
+  const container = document.getElementById('shipping-fees-list');
+  if (!container) return;
+  
+  container.innerHTML = '';
+  
+  if (shippingFees.length === 0) {
+    container.innerHTML = '<div class="text-muted text-center py-2">暂无运费记录</div>';
+    return;
+  }
+  
+  // 判断是否可以编辑（只有阶段三可以编辑）
+  const canEdit = stage === 'stage_3';
+  
+  shippingFees.forEach(fee => {
+    const feeCard = document.createElement('div');
+    feeCard.className = 'card border-success mb-2';
+    feeCard.innerHTML = `
+      <div class="card-body py-2">
+        <div class="row align-items-center">
+          <div class="col-md-2">
+            <strong>${getLogisticsTypeName(fee.logistics_type)}</strong>
+          </div>
+          <div class="col-md-2">
+            <span class="badge bg-success">¥${fee.shipping_fee.toFixed(2)}</span>
+          </div>
+          <div class="col-md-2">
+            <small>${fee.payment_method}</small>
+          </div>
+          <div class="col-md-2">
+            <small>${fee.logistics_company}</small>
+          </div>
+          <div class="col-md-2">
+            <small class="text-muted">${fee.remarks || '无备注'}</small>
+          </div>
+          <div class="col-md-2 text-center">
+            ${canEdit ? `
+              <div class="btn-group" role="group">
+                <button type="button" class="btn btn-sm btn-outline-primary" onclick="editShippingFee(${fee.id})" title="编辑">
+                  <i class="bi bi-pencil"></i>
+                </button>
+                <button type="button" class="btn btn-sm btn-outline-danger" onclick="deleteShippingFee(${fee.id})" title="删除">
+                  <i class="bi bi-trash"></i>
+                </button>
+              </div>
+            ` : `
+              <span class="text-muted small">只读</span>
+            `}
+          </div>
+        </div>
+      </div>
+    `;
+    container.appendChild(feeCard);
+  });
+}
+
+// 获取物流类型名称
+function getLogisticsTypeName(type) {
+  const typeNames = {
+    'domestic_express': '国内快递',
+    'domestic_logistics': '国内物流',
+    'international_express': '国际快递',
+    'international_logistics': '国际物流'
+  };
+  return typeNames[type] || type;
+}
+
+// 绑定运费相关事件
+function bindShippingFeesEvents(stage = null) {
+  // 判断是否可以编辑（只有阶段三可以编辑）
+  const canEdit = stage === 'stage_3';
+  
+  // 切换添加运费表单
+  const toggleBtn = document.getElementById('toggle-shipping-form');
+  const formDiv = document.getElementById('shipping-fees-form');
+  
+  if (toggleBtn && formDiv) {
+    if (canEdit) {
+      toggleBtn.onclick = function() {
+        const isVisible = formDiv.style.display !== 'none';
+        formDiv.style.display = isVisible ? 'none' : 'block';
+        const icon = toggleBtn.querySelector('i');
+        if (icon) {
+          icon.className = isVisible ? 'bi bi-chevron-down' : 'bi bi-chevron-up';
+        }
+      };
+    } else {
+      // 阶段四、五时禁用添加表单
+      toggleBtn.style.display = 'none';
+      formDiv.style.display = 'none';
+    }
+  }
+  
+  // 添加运费记录
+  const addBtn = document.getElementById('add-shipping-fee-btn');
+  if (addBtn) {
+    if (canEdit) {
+      addBtn.onclick = addShippingFee;
+    } else {
+      addBtn.disabled = true;
+    }
+  }
+}
+
+// 添加运费记录
+async function addShippingFee() {
+  const recordId = document.getElementById('record-id').value;
+  const logisticsType = document.getElementById('logistics-type').value;
+  const feeAmount = document.getElementById('shipping-fee-amount').value;
+  const paymentMethod = document.getElementById('payment-method').value;
+  const logisticsCompany = document.getElementById('logistics-company').value;
+  const feeRemarks = document.getElementById('shipping-fee-remarks').value;
+  
+  if (!feeAmount || parseFloat(feeAmount) <= 0) {
+    showToast('error', '请输入有效的运费金额');
+    return;
+  }
+  
+  if (!logisticsCompany.trim()) {
+    showToast('error', '请输入物流公司');
+    return;
+  }
+  
+  if (!paymentMethod.trim()) {
+    showToast('error', '请输入支付方式');
+    return;
+  }
+  
+  try {
+    showLoading();
+    
+    const data = {
+      sales_record_id: parseInt(recordId),
+      logistics_type: logisticsType,
+      shipping_fee: parseFloat(feeAmount),
+      payment_method: paymentMethod,
+      logistics_company: logisticsCompany.trim(),
+      remarks: feeRemarks || null
+    };
+    
+    await apiRequest('/fees', {
+      method: 'POST',
+      body: JSON.stringify(data)
+    });
+    
+    showToast('success', '运费记录添加成功');
+    
+    // 清空表单
+    document.getElementById('shipping-fee-amount').value = '';
+    document.getElementById('payment-method').value = '';
+    document.getElementById('logistics-company').value = '';
+    document.getElementById('shipping-fee-remarks').value = '';
+    
+    // 获取当前记录的阶段信息并重新加载运费列表
+    const currentRecord = await apiRequest(`/sales/${recordId}`, { method: 'GET' });
+    await loadShippingFees(recordId, currentRecord ? currentRecord.stage : null);
+    
+  } catch (error) {
+    console.error('添加运费记录失败:', error);
+    showToast('error', error.message || '添加运费记录失败');
+  } finally {
+    hideLoading();
+  }
+}
+
+// 编辑运费记录
+async function editShippingFee(feeId) {
+  try {
+    showLoading();
+    
+    // 获取运费记录详情
+    const fee = await apiRequest(`/fees/${feeId}`, { method: 'GET' });
+    if (!fee) {
+      throw new Error('运费记录不存在');
+    }
+    
+    // 填充编辑表单
+    document.getElementById('edit-fee-id').value = fee.id;
+    document.getElementById('edit-logistics-type').value = fee.logistics_type;
+    document.getElementById('edit-shipping-fee-amount').value = fee.shipping_fee;
+    document.getElementById('edit-payment-method').value = fee.payment_method;
+    document.getElementById('edit-logistics-company').value = fee.logistics_company;
+    document.getElementById('edit-shipping-fee-remarks').value = fee.remarks || '';
+    
+    // 显示模态框
+    const modal = new bootstrap.Modal(document.getElementById('edit-shipping-fee-modal'));
+    modal.show();
+    
+  } catch (error) {
+    console.error('获取运费记录失败:', error);
+    showToast('error', error.message || '获取运费记录失败');
+  } finally {
+    hideLoading();
+  }
+}
+
+// 保存编辑的运费记录
+async function saveEditedShippingFee() {
+  const form = document.getElementById('edit-shipping-fee-form');
+  if (!form || !form.checkValidity()) {
+    form.classList.add('was-validated');
+    return;
+  }
+  
+  const feeId = document.getElementById('edit-fee-id').value;
+  const logisticsType = document.getElementById('edit-logistics-type').value;
+  const feeAmount = document.getElementById('edit-shipping-fee-amount').value;
+  const paymentMethod = document.getElementById('edit-payment-method').value;
+  const logisticsCompany = document.getElementById('edit-logistics-company').value;
+  const feeRemarks = document.getElementById('edit-shipping-fee-remarks').value;
+  
+  try {
+    showLoading();
+    
+    const data = {
+      logistics_type: logisticsType,
+      shipping_fee: parseFloat(feeAmount),
+      payment_method: paymentMethod.trim(),
+      logistics_company: logisticsCompany.trim(),
+      remarks: feeRemarks || null
+    };
+    
+    await apiRequest(`/fees/${feeId}`, {
+      method: 'PUT',
+      body: JSON.stringify(data)
+    });
+    
+    showToast('success', '运费记录更新成功');
+    
+    // 隐藏模态框
+    const modal = bootstrap.Modal.getInstance(document.getElementById('edit-shipping-fee-modal'));
+    modal.hide();
+    
+    // 重新加载运费列表
+    const recordId = document.getElementById('record-id').value;
+    const currentRecord = await apiRequest(`/sales/${recordId}`, { method: 'GET' });
+    await loadShippingFees(recordId, currentRecord ? currentRecord.stage : null);
+    
+  } catch (error) {
+    console.error('更新运费记录失败:', error);
+    showToast('error', error.message || '更新运费记录失败');
+  } finally {
+    hideLoading();
+  }
+}
+
+// 删除运费记录
+async function deleteShippingFee(feeId) {
+  const confirmed = confirm('确定要删除这条运费记录吗？');
+  if (!confirmed) return;
+  
+  try {
+    showLoading();
+    
+    await apiRequest(`/fees/${feeId}`, { method: 'DELETE' });
+    showToast('success', '运费记录已删除');
+    
+    // 获取当前记录的阶段信息并重新加载运费列表
+    const recordId = document.getElementById('record-id').value;
+    const currentRecord = await apiRequest(`/sales/${recordId}`, { method: 'GET' });
+    await loadShippingFees(recordId, currentRecord ? currentRecord.stage : null);
+    
+  } catch (error) {
+    console.error('删除运费记录失败:', error);
+    showToast('error', error.message || '删除运费记录失败');
+  } finally {
+    hideLoading();
+  }
+}
+
+// ======================== 采购信息管理 ========================
+
+// 加载采购信息
+async function loadProcurement(salesRecordId, stage = null) {
+  try {
+    const procurement = await apiRequest(`/procurement/sales-record/${salesRecordId}`, { method: 'GET' });
+    displayProcurement(procurement || [], stage);
+  } catch (error) {
+    console.error('加载采购信息失败:', error);
+    displayProcurement([], stage);
+  }
+}
+
+// 显示采购信息
+function displayProcurement(procurement, stage = null) {
+  const container = document.getElementById('procurement-list');
+  if (!container) return;
+  
+  container.innerHTML = '';
+  
+  if (procurement.length === 0) {
+    container.innerHTML = '<div class="text-muted text-center py-2">暂无采购记录</div>';
+    return;
+  }
+  
+  // 判断是否可以编辑（只有阶段三可以编辑）
+  const canEdit = stage === 'stage_3';
+  
+  procurement.forEach(item => {
+    const itemCard = document.createElement('div');
+    itemCard.className = 'card border-info mb-2';
+    itemCard.innerHTML = `
+      <div class="card-body py-2">
+        <div class="row">
+          <div class="col-md-3">
+            <div><strong>${item.procurement_item}</strong></div>
+            <small class="text-muted">供应商：${item.supplier}</small>
+          </div>
+          <div class="col-md-2">
+            <div>数量：${item.quantity}</div>
+            <span class="badge bg-info">¥${item.amount.toFixed(2)}</span>
+          </div>
+          <div class="col-md-2">
+            <div><strong>支付方式：</strong></div>
+            <small class="text-muted">${item.payment_method}</small>
+          </div>
+          <div class="col-md-3">
+            <div><strong>备注：</strong></div>
+            <small class="text-muted">${item.remarks || '无备注'}</small>
+          </div>
+          <div class="col-md-2 text-center">
+            ${canEdit ? `
+              <div class="btn-group" role="group">
+                <button type="button" class="btn btn-sm btn-outline-primary" onclick="editProcurement(${item.id})" title="编辑">
+                  <i class="bi bi-pencil"></i>
+                </button>
+                <button type="button" class="btn btn-sm btn-outline-danger" onclick="deleteProcurement(${item.id})" title="删除">
+                  <i class="bi bi-trash"></i>
+                </button>
+              </div>
+            ` : `
+              <span class="text-muted small">只读</span>
+            `}
+          </div>
+        </div>
+      </div>
+    `;
+    container.appendChild(itemCard);
+  });
+}
+
+// 绑定采购相关事件
+function bindProcurementEvents(stage = null) {
+  // 判断是否可以编辑（只有阶段三可以编辑）
+  const canEdit = stage === 'stage_3';
+  
+  // 切换添加采购表单
+  const toggleBtn = document.getElementById('toggle-procurement-form');
+  const formDiv = document.getElementById('procurement-form');
+  
+  if (toggleBtn && formDiv) {
+    if (canEdit) {
+      toggleBtn.onclick = function() {
+        const isVisible = formDiv.style.display !== 'none';
+        formDiv.style.display = isVisible ? 'none' : 'block';
+        const icon = toggleBtn.querySelector('i');
+        if (icon) {
+          icon.className = isVisible ? 'bi bi-chevron-down' : 'bi bi-chevron-up';
+        }
+      };
+    } else {
+      // 阶段四、五时禁用添加表单
+      toggleBtn.style.display = 'none';
+      formDiv.style.display = 'none';
+    }
+  }
+  
+  // 添加采购记录
+  const addBtn = document.getElementById('add-procurement-btn');
+  if (addBtn) {
+    if (canEdit) {
+      addBtn.onclick = addProcurement;
+    } else {
+      addBtn.disabled = true;
+    }
+  }
+}
+
+// 添加采购记录
+async function addProcurement() {
+  const recordId = document.getElementById('record-id').value;
+  const supplier = document.getElementById('procurement-supplier').value;
+  const procurementItem = document.getElementById('procurement-item').value;
+  const quantity = document.getElementById('procurement-quantity').value;
+  const amount = document.getElementById('procurement-amount').value;
+  const paymentMethod = document.getElementById('procurement-payment').value;
+  const remarks = document.getElementById('procurement-remarks').value;
+  
+  if (!supplier.trim()) {
+    showToast('error', '请输入供应单位');
+    return;
+  }
+  
+  if (!procurementItem.trim()) {
+    showToast('error', '请输入采购事项');
+    return;
+  }
+  
+  if (!quantity || parseInt(quantity) <= 0) {
+    showToast('error', '请输入有效的采购数量');
+    return;
+  }
+  
+  if (!amount || parseFloat(amount) <= 0) {
+    showToast('error', '请输入有效的采购金额');
+    return;
+  }
+  
+  if (!paymentMethod.trim()) {
+    showToast('error', '请输入支付方式');
+    return;
+  }
+  
+  try {
+    showLoading();
+    
+    const data = {
+      sales_record_id: parseInt(recordId),
+      supplier: supplier.trim(),
+      procurement_item: procurementItem.trim(),
+      quantity: parseInt(quantity),
+      amount: parseFloat(amount),
+      payment_method: paymentMethod.trim(),
+      remarks: remarks || null
+    };
+    
+    await apiRequest('/procurement', {
+      method: 'POST',
+      body: JSON.stringify(data)
+    });
+    
+    showToast('success', '采购记录添加成功');
+    
+    // 清空表单
+    document.getElementById('procurement-supplier').value = '';
+    document.getElementById('procurement-item').value = '';
+    document.getElementById('procurement-quantity').value = '';
+    document.getElementById('procurement-amount').value = '';
+    document.getElementById('procurement-payment').value = '';
+    document.getElementById('procurement-remarks').value = '';
+    
+    // 获取当前记录的阶段信息并重新加载采购列表
+    const currentRecord = await apiRequest(`/sales/${recordId}`, { method: 'GET' });
+    await loadProcurement(recordId, currentRecord ? currentRecord.stage : null);
+    
+  } catch (error) {
+    console.error('添加采购记录失败:', error);
+    showToast('error', error.message || '添加采购记录失败');
+  } finally {
+    hideLoading();
+  }
+}
+
+// 编辑采购记录
+async function editProcurement(procurementId) {
+  try {
+    showLoading();
+    
+    // 获取采购记录详情
+    const procurement = await apiRequest(`/procurement/${procurementId}`, { method: 'GET' });
+    if (!procurement) {
+      throw new Error('采购记录不存在');
+    }
+    
+    // 填充编辑表单
+    document.getElementById('edit-procurement-id').value = procurement.id;
+    document.getElementById('edit-procurement-supplier').value = procurement.supplier;
+    document.getElementById('edit-procurement-item').value = procurement.procurement_item;
+    document.getElementById('edit-procurement-quantity').value = procurement.quantity;
+    document.getElementById('edit-procurement-amount').value = procurement.amount;
+    document.getElementById('edit-procurement-payment').value = procurement.payment_method;
+    document.getElementById('edit-procurement-remarks').value = procurement.remarks || '';
+    
+    // 显示模态框
+    const modal = new bootstrap.Modal(document.getElementById('edit-procurement-modal'));
+    modal.show();
+    
+  } catch (error) {
+    console.error('获取采购记录失败:', error);
+    showToast('error', error.message || '获取采购记录失败');
+  } finally {
+    hideLoading();
+  }
+}
+
+// 保存编辑的采购记录
+async function saveEditedProcurement() {
+  const form = document.getElementById('edit-procurement-form');
+  if (!form || !form.checkValidity()) {
+    form.classList.add('was-validated');
+    return;
+  }
+  
+  const procurementId = document.getElementById('edit-procurement-id').value;
+  const supplier = document.getElementById('edit-procurement-supplier').value;
+  const procurementItem = document.getElementById('edit-procurement-item').value;
+  const quantity = document.getElementById('edit-procurement-quantity').value;
+  const amount = document.getElementById('edit-procurement-amount').value;
+  const paymentMethod = document.getElementById('edit-procurement-payment').value;
+  const remarks = document.getElementById('edit-procurement-remarks').value;
+  
+  try {
+    showLoading();
+    
+    const data = {
+      supplier: supplier.trim(),
+      procurement_item: procurementItem.trim(),
+      quantity: parseInt(quantity),
+      amount: parseFloat(amount),
+      payment_method: paymentMethod.trim(),
+      remarks: remarks || null
+    };
+    
+    await apiRequest(`/procurement/${procurementId}`, {
+      method: 'PUT',
+      body: JSON.stringify(data)
+    });
+    
+    showToast('success', '采购记录更新成功');
+    
+    // 隐藏模态框
+    const modal = bootstrap.Modal.getInstance(document.getElementById('edit-procurement-modal'));
+    modal.hide();
+    
+    // 重新加载采购列表
+    const recordId = document.getElementById('record-id').value;
+    const currentRecord = await apiRequest(`/sales/${recordId}`, { method: 'GET' });
+    await loadProcurement(recordId, currentRecord ? currentRecord.stage : null);
+    
+  } catch (error) {
+    console.error('更新采购记录失败:', error);
+    showToast('error', error.message || '更新采购记录失败');
+  } finally {
+    hideLoading();
+  }
+}
+
+// 删除采购记录
+async function deleteProcurement(procurementId) {
+  const confirmed = confirm('确定要删除这条采购记录吗？');
+  if (!confirmed) return;
+  
+  try {
+    showLoading();
+    
+    await apiRequest(`/procurement/${procurementId}`, { method: 'DELETE' });
+    showToast('success', '采购记录已删除');
+    
+    // 获取当前记录的阶段信息并重新加载采购列表
+    const recordId = document.getElementById('record-id').value;
+    const currentRecord = await apiRequest(`/sales/${recordId}`, { method: 'GET' });
+    await loadProcurement(recordId, currentRecord ? currentRecord.stage : null);
+    
+  } catch (error) {
+    console.error('删除采购记录失败:', error);
+    showToast('error', error.message || '删除采购记录失败');
+  } finally {
+    hideLoading();
+  }
+}
+
+// 暴露运费和采购管理函数给全局
+window.deleteShippingFee = deleteShippingFee;
+window.deleteProcurement = deleteProcurement;

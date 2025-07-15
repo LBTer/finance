@@ -10,7 +10,7 @@ class Procurement(Base):
     id: Mapped[int] = mapped_column(primary_key=True, index=True)
 
     # 订单id
-    sales_record_id: Mapped[int] = mapped_column(ForeignKey("sales_record.id"), nullable=False)
+    sales_record_id: Mapped[int] = mapped_column(ForeignKey("salesrecord.id"), nullable=False)
     sales_record: Mapped["SalesRecord"] = relationship(
         "SalesRecord", 
         back_populates="procurement"

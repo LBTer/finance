@@ -1,6 +1,6 @@
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
-from app.models.user import User, UserRole
+from app.models.user import User, UserRole, UserFunction
 from app.core.security import get_password_hash
 from app.core.config import settings
 
@@ -22,6 +22,7 @@ async def init_superuser(db: AsyncSession) -> None:
             password_hash=get_password_hash(settings.FIRST_SUPERUSER_PASSWORD),
             full_name=settings.FIRST_SUPERUSER_FULL_NAME,
             role=UserRole.ADMIN,
+            function=UserFunction.SALES_LOGISTICS,  # 管理员默认设置为所职能（虽然有所有权限）
             is_active=True,
             is_superuser=True
         )

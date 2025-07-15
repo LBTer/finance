@@ -100,3 +100,13 @@ async def sales_page(request: Request):
 async def users_page(request: Request):
     return templates.TemplateResponse("users.html", {"request": request}) 
 
+# 运费管理页面
+@app.get("/fees", response_class=HTMLResponse)
+async def fees_page(request: Request):
+    return templates.TemplateResponse("fees.html", {"request": request})
+
+# 采购管理页面
+@app.get("/procurement", response_class=HTMLResponse)
+async def procurement_page(request: Request):
+    return templates.TemplateResponse("procurement.html", {"request": request})
+

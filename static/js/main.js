@@ -67,8 +67,10 @@ async function getCurrentUser() {
           fullName: userInfo.full_name,
           email: userInfo.email,
           phone: userInfo.phone,
+          function: userInfo.function, // 添加用户职能字段
           isActive: userInfo.is_active,
-          isSuperuser: userInfo.is_superuser
+          isSuperuser: userInfo.is_superuser,
+          is_superuser: userInfo.is_superuser // 保持兼容性
         };
       }
     }

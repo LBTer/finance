@@ -68,6 +68,25 @@ class UserResponse(UserInDBBase):
     class Config:
         from_attributes = True
 
+class UserInfoUpdate(BaseSchema):
+    """用户信息更新Schema（仅超级管理员可使用）"""
+    full_name: Optional[str] = Field(None, min_length=2, max_length=255)
+    email: Optional[EmailStr] = None
+    role: Optional[str] = None
+    function: Optional[str] = None
+    is_active: Optional[bool] = None
+    
+    class Config:
+        json_schema_extra = {
+            "example": {
+                "full_name": "张三",
+                "email": "user@example.com",
+                "role": "senior",
+                "function": "sales_logistics",
+                "is_active": True
+            }
+        }
+
 class PasswordReset(BaseSchema):
     """重置密码请求体"""
     phone: str
