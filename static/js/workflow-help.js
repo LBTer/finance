@@ -346,20 +346,7 @@ class WorkflowHelp {
                     </ul>
                     <p><strong>可用操作：</strong>审核通过、撤回到阶段一</p>`
             },
-            {
-                num: 3,
-                title: '<span class="stage-label stage-label-3">阶段三</span> 信息补充阶段',
-                color: 'stage-3',
-                content: `<p><strong>状态：</strong>待补充信息</p>
-                    <p><strong>操作者：</strong>后勤人员</p>
-                    <p><strong>主要工作：</strong></p>
-                    <ul>
-                        <li>补充运费、采购成本等信息</li>
-                        <li>上传后勤相关附件（发票、运输单据等）</li>
-                        <li>完善订单的所有财务信息</li>
-                    </ul>
-                    <p><strong>可用操作：</strong>修改、提交、管理后勤附件、撤回到阶段一</p>`
-            },
+            {                num: 3,                title: '<span class="stage-label stage-label-3">阶段三</span> 信息补充阶段',                color: 'stage-3',                content: `<p><strong>状态：</strong>待补充信息</p>                    <p><strong>操作者：</strong>后勤人员</p>                    <p><strong>主要工作：</strong></p>                    <ul>                        <li>补充财务信息（汇率、出厂价格、退款、退税）</li>                        <li>添加运费和采购成本信息</li>                        <li>使用自动计算功能计算利润</li>                        <li>上传后勤相关附件（发票、运输单据等）</li>                        <li>完善订单的所有财务信息</li>                    </ul>                    <p><strong>可用操作：</strong>修改、提交、管理后勤附件、撤回到阶段一</p>                    <p><strong>注意事项：</strong>财务信息字段仅在此阶段可编辑，系统提供自动利润计算功能</p>`            },
             {
                 num: 4,
                 title: '<span class="stage-label stage-label-4">阶段四</span> 最终审核阶段',
@@ -460,4 +447,4 @@ document.addEventListener('DOMContentLoaded', function() {
     if (helpContainer) {
         helpContainer.innerHTML = WorkflowHelp.createHelpButton();
     }
-}); 
+});

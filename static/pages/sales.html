@@ -327,6 +327,62 @@
               </div>
             </div>
             
+            <!-- 财务信息（第三阶段字段） -->
+            <div class="row g-3 mb-4" id="financial-info-section">
+              <div class="col-12"><h6 class="text-primary border-bottom pb-2">财务信息</h6></div>
+              
+              <div class="col-md-6">
+                <label for="exchange-rate" class="form-label">汇率 (USD-CNY)</label>
+                <div class="input-group">
+                  <input type="number" class="form-control" id="exchange-rate" name="exchange_rate" min="1" max="20" step="0.0001" value="7.1">
+                  <span class="input-group-text">CNY</span>
+                </div>
+                <div class="form-text">美元兑人民币汇率</div>
+              </div>
+              
+              <div class="col-md-6">
+                <label for="factory-price" class="form-label">出厂价格 (CNY)</label>
+                <div class="input-group">
+                  <span class="input-group-text">¥</span>
+                  <input type="number" class="form-control" id="factory-price" name="factory_price" min="0" step="0.01" value="0">
+                </div>
+                <div class="form-text">产品出厂价格</div>
+              </div>
+              
+              <div class="col-md-6">
+                <label for="refund-amount" class="form-label">退款 (CNY)</label>
+                <div class="input-group">
+                  <span class="input-group-text">¥</span>
+                  <input type="number" class="form-control" id="refund-amount" name="refund_amount" min="0" step="0.01" value="0">
+                </div>
+                <div class="form-text">退款金额</div>
+              </div>
+              
+              <div class="col-md-6">
+                <label for="tax-refund" class="form-label">退税 (CNY)</label>
+                <div class="input-group">
+                  <span class="input-group-text">¥</span>
+                  <input type="number" class="form-control" id="tax-refund" name="tax_refund" min="0" step="0.01" value="0">
+                </div>
+                <div class="form-text">退税金额</div>
+              </div>
+              
+              <div class="col-md-12">
+                <label for="profit" class="form-label">利润 (CNY)</label>
+                <div class="input-group">
+                  <span class="input-group-text">¥</span>
+                  <input type="number" class="form-control" id="profit" name="profit" step="0.01" value="0">
+                  <button type="button" class="btn btn-outline-primary" id="calculate-profit-btn" 
+                          data-bs-toggle="tooltip" 
+                          data-bs-placement="top" 
+                          title="利润 = 总价 × 汇率 - 出厂价格 - 运费总和 - 采购总和 + 退款 + 退税">
+                    <i class="bi bi-calculator"></i> 自动计算
+                  </button>
+                </div>
+                <div class="form-text">利润金额，可手动填写或点击按钮自动计算</div>
+              </div>
+            </div>
+            
             <!-- 运费信息管理（仅在阶段三显示） -->
             <div class="row g-3 mb-4" id="shipping-fees-section" style="display: none;">
               <div class="col-12"><h6 class="text-primary border-bottom pb-2"><i class="bi bi-truck"></i> 运费信息管理</h6></div>
@@ -591,6 +647,27 @@
             </div>
           </div>
           
+          <!-- 财务信息 -->
+          <div class="row mb-4">
+            <div class="col-12"><h6 class="text-primary border-bottom pb-2">财务信息</h6></div>
+            <div class="col-md-6 mb-3">
+              <strong>汇率 (USD-CNY)：</strong> <span id="detail-exchange-rate"></span>
+            </div>
+            <div class="col-md-6 mb-3">
+              <strong>出厂价格：</strong> ¥<span id="detail-factory-price"></span>
+            </div>
+            <div class="col-md-6 mb-3">
+              <strong>退款：</strong> ¥<span id="detail-refund-amount"></span>
+            </div>
+            <div class="col-md-6 mb-3">
+              <strong>退税：</strong> ¥<span id="detail-tax-refund"></span>
+            </div>
+            <div class="col-md-12 mb-3">
+              <strong>利润：</strong> ¥<span id="detail-profit"></span>
+              <small class="text-muted ms-2">(利润 = 总价 × 汇率 - 出厂价格 - 运费总和 - 采购总和 + 退款 + 退税)</small>
+            </div>
+          </div>
+          
           <!-- 运费记录 -->
           <div class="row mb-4">
             <div class="col-12"><h6 class="text-success border-bottom pb-2"><i class="bi bi-truck"></i> 运费记录</h6></div>
@@ -839,4 +916,4 @@
   <script src="/static/js/sales.js"></script>
   <script src="/static/js/workflow-help.js"></script>
 </body>
-</html> 
+</html>

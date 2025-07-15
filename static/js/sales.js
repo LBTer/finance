@@ -89,6 +89,12 @@ async function initSalesPage() {
     confirmDeleteButton.addEventListener('click', handleDeleteSales);
   }
   
+  // 绑定利润计算按钮事件
+  const calculateProfitBtn = document.getElementById('calculate-profit-btn');
+  if (calculateProfitBtn) {
+    calculateProfitBtn.addEventListener('click', calculateProfit);
+  }
+  
   // 审核按钮已移除，现在使用表格中的阶段管理按钮
   
   // 检查URL参数，如果有id参数则打开对应记录详情
@@ -234,9 +240,8 @@ function renderSalesTable(sales) {
                      (sale.stage === 'stage_1' && isCreator && hasSalesFunction) ||
                      (sale.stage === 'stage_3' && hasLogisticsFunction);
     
-    // 删除权限：只有阶段一且是创建者
-    const canDelete = hasAdminRole || hasSeniorRole ||
-                     (sale.stage === 'stage_1' && isCreator && hasSalesFunction);
+    // 删除权限：只有阶段一且是创建者本人才能删除
+    const canDelete = (sale.stage === 'stage_1' && isCreator && hasSalesFunction);
     
     // 提交权限：阶段一到阶段二（创建者），阶段三到阶段四（后勤职能）
     // 注意：阶段二不能提交，只能审核通过后自动进入阶段三
@@ -514,6 +519,25 @@ function showAddSalesModal() {
   // 清除订单号验证状态
   clearOrderNumberValidation();
   
+  // 新增时禁用财务字段（第一阶段不能编辑财务信息）
+  const exchangeRateEl = document.getElementById('exchange-rate');
+  const factoryPriceEl = document.getElementById('factory-price');
+  const refundAmountEl = document.getElementById('refund-amount');
+  const taxRefundEl = document.getElementById('tax-refund');
+  const profitEl = document.getElementById('profit');
+  
+  if (exchangeRateEl) exchangeRateEl.disabled = true;
+  if (factoryPriceEl) factoryPriceEl.disabled = true;
+  if (refundAmountEl) refundAmountEl.disabled = true;
+  if (taxRefundEl) taxRefundEl.disabled = true;
+  if (profitEl) profitEl.disabled = true;
+  
+  // 隐藏自动计算按钮（新增时不显示）
+  const calculateProfitBtn = document.getElementById('calculate-profit-btn');
+  if (calculateProfitBtn) {
+    calculateProfitBtn.style.display = 'none';
+  }
+  
   // 显示模态框
   const modal = new bootstrap.Modal(document.getElementById('sales-modal'));
   modal.show();
@@ -623,6 +647,40 @@ async function showEditSalesModal(id) {
     if (remarksEl) {
       remarksEl.value = record.remarks || '';
       remarksEl.disabled = !canModify; // 阶段一、三可以修改
+    }
+    
+    // 新增财务字段：只有第三阶段可以编辑，第一阶段置灰
+    const exchangeRateEl = document.getElementById('exchange-rate');
+    const factoryPriceEl = document.getElementById('factory-price');
+    const refundAmountEl = document.getElementById('refund-amount');
+    const taxRefundEl = document.getElementById('tax-refund');
+    const profitEl = document.getElementById('profit');
+    
+    if (exchangeRateEl) {
+      exchangeRateEl.value = record.exchange_rate || '';
+      exchangeRateEl.disabled = !isStageThree; // 只有第三阶段可以编辑
+    }
+    if (factoryPriceEl) {
+      factoryPriceEl.value = record.factory_price || '';
+      factoryPriceEl.disabled = !isStageThree; // 只有第三阶段可以编辑
+    }
+    if (refundAmountEl) {
+      refundAmountEl.value = record.refund_amount || '';
+      refundAmountEl.disabled = !isStageThree; // 只有第三阶段可以编辑
+    }
+    if (taxRefundEl) {
+      taxRefundEl.value = record.tax_refund || '';
+      taxRefundEl.disabled = !isStageThree; // 只有第三阶段可以编辑
+    }
+    if (profitEl) {
+      profitEl.value = record.profit || '';
+      profitEl.disabled = !isStageThree; // 只有第三阶段可以编辑
+    }
+    
+    // 控制自动计算按钮的显示：只在第三阶段显示
+    const calculateProfitBtn = document.getElementById('calculate-profit-btn');
+    if (calculateProfitBtn) {
+      calculateProfitBtn.style.display = isStageThree ? 'inline-block' : 'none';
     }
     
     // 只清理附件表单DOM元素，不重置状态（编辑模式下需要保持状态）
@@ -775,6 +833,13 @@ async function handleSaveSales() {
           throw new Error('表单元素缺失，无法保存');
         }
         
+        // 获取财务字段元素
+        const exchangeRateEl = document.getElementById('exchange-rate');
+        const factoryPriceEl = document.getElementById('factory-price');
+        const refundAmountEl = document.getElementById('refund-amount');
+        const taxRefundEl = document.getElementById('tax-refund');
+        const profitEl = document.getElementById('profit');
+        
         formData = {
           order_number: orderNumberEl.value.trim(),
           order_type: orderTypeEl.value,
@@ -783,15 +848,31 @@ async function handleSaveSales() {
           quantity: parseInt(quantityEl.value),
           unit_price: parseFloat(unitPriceEl.value),
           total_price: parseFloat(totalPriceEl.value),
-          remarks: remarksEl ? remarksEl.value.trim() || null : null
+          remarks: remarksEl ? remarksEl.value.trim() || null : null,
+          exchange_rate: exchangeRateEl && exchangeRateEl.value ? parseFloat(exchangeRateEl.value) : null,
+          factory_price: factoryPriceEl && factoryPriceEl.value ? parseFloat(factoryPriceEl.value) : null,
+          refund_amount: refundAmountEl && refundAmountEl.value ? parseFloat(refundAmountEl.value) : null,
+          tax_refund: taxRefundEl && taxRefundEl.value ? parseFloat(taxRefundEl.value) : null,
+          profit: profitEl && profitEl.value ? parseFloat(profitEl.value) : null
         };
         console.log('阶段一编辑：保存所有基本信息');
       } else if (currentRecord.stage === 'stage_3') {
-        // 阶段三：只能修改备注
+        // 阶段三：可以修改备注和财务字段
+        const exchangeRateEl = document.getElementById('exchange-rate');
+        const factoryPriceEl = document.getElementById('factory-price');
+        const refundAmountEl = document.getElementById('refund-amount');
+        const taxRefundEl = document.getElementById('tax-refund');
+        const profitEl = document.getElementById('profit');
+        
         formData = {
-          remarks: remarksEl ? remarksEl.value.trim() || null : null
+          remarks: remarksEl ? remarksEl.value.trim() || null : null,
+          exchange_rate: exchangeRateEl && exchangeRateEl.value ? parseFloat(exchangeRateEl.value) : null,
+          factory_price: factoryPriceEl && factoryPriceEl.value ? parseFloat(factoryPriceEl.value) : null,
+          refund_amount: refundAmountEl && refundAmountEl.value ? parseFloat(refundAmountEl.value) : null,
+          tax_refund: taxRefundEl && taxRefundEl.value ? parseFloat(taxRefundEl.value) : null,
+          profit: profitEl && profitEl.value ? parseFloat(profitEl.value) : null
         };
-        console.log('阶段三编辑：只保存备注');
+        console.log('阶段三编辑：保存备注和财务字段');
       } else {
         // 其他阶段：不允许修改任何内容
         throw new Error('当前阶段不允许修改记录');
@@ -869,6 +950,19 @@ async function handleSaveSales() {
       
       const remarks = remarksEl ? remarksEl.value.trim() : '';
       if (remarks) formData.append('remarks', remarks);
+      
+      // 添加财务字段
+      const exchangeRateEl = document.getElementById('exchange-rate');
+      const factoryPriceEl = document.getElementById('factory-price');
+      const refundAmountEl = document.getElementById('refund-amount');
+      const taxRefundEl = document.getElementById('tax-refund');
+      const profitEl = document.getElementById('profit');
+      
+      if (exchangeRateEl && exchangeRateEl.value) formData.append('exchange_rate', parseFloat(exchangeRateEl.value));
+      if (factoryPriceEl && factoryPriceEl.value) formData.append('factory_price', parseFloat(factoryPriceEl.value));
+      if (refundAmountEl && refundAmountEl.value) formData.append('refund_amount', parseFloat(refundAmountEl.value));
+      if (taxRefundEl && taxRefundEl.value) formData.append('tax_refund', parseFloat(taxRefundEl.value));
+      if (profitEl && profitEl.value) formData.append('profit', parseFloat(profitEl.value));
       
       // 添加文件（如果有）
       const files = window.attachmentsManager ? window.attachmentsManager.getFormFiles() : [];
@@ -990,6 +1084,13 @@ async function showSalesDetails(id) {
       'exhibition': '展会'
     }[record.order_source] || record.order_source || '-';
     setElementText('detail-order-source', orderSourceText);
+    
+    // 财务信息
+    setElementText('detail-exchange-rate', record.exchange_rate || '-');
+    setElementText('detail-factory-price', record.factory_price ? parseFloat(record.factory_price).toFixed(2) : '-');
+    setElementText('detail-refund-amount', record.refund_amount ? parseFloat(record.refund_amount).toFixed(2) : '-');
+    setElementText('detail-tax-refund', record.tax_refund ? parseFloat(record.tax_refund).toFixed(2) : '-');
+    setElementText('detail-profit', record.profit ? parseFloat(record.profit).toFixed(2) : '-');
     
     setElementText('detail-creator', record.user ? record.user.full_name : '-');
     setElementText('detail-created-at', formatDateTime(record.created_at));
@@ -2085,6 +2186,83 @@ async function deleteProcurement(procurementId) {
   }
 }
 
+// 利润自动计算函数
+function calculateProfit() {
+  try {
+    // 获取表单元素
+    const totalPriceEl = document.getElementById('total-price');
+    const exchangeRateEl = document.getElementById('exchange-rate');
+    const factoryPriceEl = document.getElementById('factory-price');
+    const refundAmountEl = document.getElementById('refund-amount');
+    const taxRefundEl = document.getElementById('tax-refund');
+    const profitEl = document.getElementById('profit');
+    
+    if (!totalPriceEl || !exchangeRateEl || !factoryPriceEl || !profitEl) {
+      showToast('error', '缺少必要的表单字段');
+      return;
+    }
+    
+    // 获取基础数据
+    const totalPrice = parseFloat(totalPriceEl.value) || 0;
+    const exchangeRate = parseFloat(exchangeRateEl.value) || 0;
+    const factoryPrice = parseFloat(factoryPriceEl.value) || 0;
+    const refundAmount = parseFloat(refundAmountEl.value) || 0;
+    const taxRefund = parseFloat(taxRefundEl.value) || 0;
+    
+    if (totalPrice <= 0) {
+      showToast('error', '请先输入有效的总价');
+      return;
+    }
+    
+    if (exchangeRate <= 0) {
+      showToast('error', '请先输入有效的汇率');
+      return;
+    }
+    
+    // 获取运费总和
+    let shippingTotal = 0;
+    const shippingCards = document.querySelectorAll('#shipping-fees-list .badge.bg-success');
+    shippingCards.forEach(badge => {
+      const amount = parseFloat(badge.textContent.replace('¥', '')) || 0;
+      shippingTotal += amount;
+    });
+    
+    // 获取采购总和
+    let procurementTotal = 0;
+    const procurementCards = document.querySelectorAll('#procurement-list .badge.bg-info');
+    procurementCards.forEach(badge => {
+      const amount = parseFloat(badge.textContent.replace('¥', '')) || 0;
+      procurementTotal += amount;
+    });
+    
+    // 计算利润：总价 × 汇率 - 出厂价格 - 运费总和 - 采购总和 + 退款 + 退税
+    const profit = (totalPrice * exchangeRate) - factoryPrice - shippingTotal - procurementTotal + refundAmount + taxRefund;
+    
+    // 设置利润值
+    profitEl.value = profit.toFixed(2);
+    
+    // 显示计算公式
+    const formulaText = `${totalPrice} × ${exchangeRate} - ${factoryPrice} - ${shippingTotal} - ${procurementTotal} + ${refundAmount} + ${taxRefund} = ${profit.toFixed(2)}`;
+    
+    // 查找或创建公式显示元素
+    let formulaElement = document.getElementById('profit-formula');
+    if (!formulaElement) {
+      formulaElement = document.createElement('div');
+      formulaElement.id = 'profit-formula';
+      formulaElement.className = 'form-text text-info mt-1';
+      profitEl.parentNode.parentNode.appendChild(formulaElement);
+    }
+    formulaElement.innerHTML = `<i class="bi bi-calculator"></i> 计算公式：${formulaText}`;
+    
+    showToast('success', `利润计算完成：¥${profit.toFixed(2)}`);
+    
+  } catch (error) {
+    console.error('计算利润失败:', error);
+    showToast('error', '计算利润失败，请检查输入数据');
+  }
+}
+
 // 暴露运费和采购管理函数给全局
 window.deleteShippingFee = deleteShippingFee;
 window.deleteProcurement = deleteProcurement;
+window.calculateProfit = calculateProfit;
