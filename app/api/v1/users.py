@@ -21,7 +21,7 @@ async def get_current_user_info(
     """
     return current_user
 
-@router.get("/", response_model=UserListResponse)
+@router.get("", response_model=UserListResponse)
 async def get_users(
     db: AsyncSessionDep,
     current_user: Annotated[User, Depends(get_current_user)],
