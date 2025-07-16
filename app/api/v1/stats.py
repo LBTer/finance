@@ -5,7 +5,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from datetime import datetime, timedelta, timezone
 
 from app.core.dependencies import AsyncSessionDep, get_current_user
-from app.models.user import User
+from app.models.user import User, UserRole
 from app.models.sales_record import SalesRecord, OrderStage, OrderSource
 from app.models.fees import ShippingFees
 from app.models.procurement import Procurement
@@ -40,8 +40,8 @@ async def get_dashboard_stats(
     
     # 基础查询条件
     base_query = select(func.count(SalesRecord.id))
-    if not current_user.is_superuser:
-        # 非超级管理员只能看到自己的销售记录
+    if not current_user.is_superuser and current_user.role != UserRole.ADMIN.value:
+        # 非超级管理员/高级用户只能看到自己的销售记录
         base_query = base_query.where(SalesRecord.user_id == current_user.id)
     
     # 1. 获取各阶段订单数量

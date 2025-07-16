@@ -1,4 +1,4 @@
-from typing import Optional
+from typing import Optional, List
 from pydantic import BaseModel, EmailStr, Field
 from app.models.user import UserRole, UserFunction
 from .base import BaseSchema, TimestampSchema
@@ -98,4 +98,23 @@ class PasswordReset(BaseSchema):
                 "phone": "12345678901",
                 "new_password": "newpassword123"
             }
-        } 
+        }
+
+class UserListResponse(BaseSchema):
+    """用户列表分页响应Schema"""
+    users: List[UserResponse]
+    total: int
+    page: int
+    page_size: int
+    total_pages: int
+    
+    class Config:
+        json_schema_extra = {
+            "example": {
+                "users": [],
+                "total": 25,
+                "page": 1,
+                "page_size": 10,
+                "total_pages": 3
+            }
+        }

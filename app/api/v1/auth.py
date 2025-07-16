@@ -10,7 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
 from app.core.security import create_access_token, get_password_hash, verify_password
-from app.core.dependencies import AsyncSessionDep, get_current_active_superuser, get_current_active_senior_or_admin
+from app.core.dependencies import AsyncSessionDep, get_current_user, get_current_active_senior_or_admin
 from app.models.user import User, UserFunction, UserRole
 from app.models.audit_log import AuditAction, AuditResourceType
 from app.schemas.user import UserCreate, UserResponse, PasswordReset, UserInfoUpdate
@@ -282,14 +282,14 @@ async def update_user_info(
     user_id: int,
     user_update: UserInfoUpdate,
     db: AsyncSessionDep,
-    current_user: Annotated[User, Depends(get_current_active_superuser)],
+    current_user: Annotated[User, Depends(get_current_user)],
     request: Request
 ) -> User:
     """
     修改用户信息
-    - 只有超级管理员可以使用此接口
-    - 可以修改用户的姓名、邮箱、角色、职能、启用状态
-    - 用户角色只能修改成普通用户/高级用户
+    - 普通用户只能修改自己的基本信息（不能修改角色）
+    - 高级用户可以修改自己和普通用户的信息，但不能修改其他高级用户的角色
+    - 超级管理员可以修改所有用户信息（除了其他超级管理员的角色）
     """
     # 查找要修改的用户
     result = await db.execute(
@@ -303,8 +303,48 @@ async def update_user_info(
             detail="用户不存在"
         )
     
+    # 权限检查
+    if current_user.role == UserRole.NORMAL:
+        # 普通用户只能修改自己的信息
+        if user.id != current_user.id:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="您只能修改自己的信息"
+            )
+        # 普通用户不能修改角色
+        if user_update.role is not None:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="您没有权限修改角色"
+            )
+    elif current_user.role == UserRole.SENIOR:
+        # 高级用户不能修改超级管理员
+        if user.role == UserRole.ADMIN:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="您没有权限修改超级管理员"
+            )
+        # 高级用户不能修改其他高级用户的角色
+        if user_update.role is not None and user.role == UserRole.SENIOR and user.id != current_user.id:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="您不能修改其他高级用户的角色"
+            )
+    
     # 验证角色
     if user_update.role is not None:
+        # 不能将用户角色修改为超级管理员
+        if user_update.role == UserRole.ADMIN.value:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="不能将用户角色修改为超级管理员"
+            )
+        # 超级管理员的角色不能被修改
+        if user.role == UserRole.ADMIN:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="超级管理员的角色不能被修改"
+            )
         if user_update.role not in [UserRole.NORMAL.value, UserRole.SENIOR.value]:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
