@@ -69,6 +69,22 @@ class AttachmentsManager {
             return;
         }
 
+        // 检查附件数量限制
+        const maxAttachments = 20;
+        const totalAfterAdd = this.selectedFiles.length + validNewFiles.length;
+        
+        if (totalAfterAdd > maxAttachments) {
+            const allowedCount = maxAttachments - this.selectedFiles.length;
+            if (allowedCount <= 0) {
+                showToast('error', `每个销售记录最多只能有${maxAttachments}个附件`);
+                this.updateInputFiles(fileInput);
+                return;
+            } else {
+                showToast('warning', `只能再添加${allowedCount}个附件，已自动限制选择数量`);
+                validNewFiles.splice(allowedCount);
+            }
+        }
+
         // 添加到已选择的文件列表中
         this.selectedFiles = [...this.selectedFiles, ...validNewFiles];
         
@@ -396,6 +412,22 @@ class AttachmentsManager {
             return;
         }
 
+        // 检查附件数量限制
+        const maxAttachments = 20;
+        const currentAttachmentCount = await this.getCurrentAttachmentCount(this.currentRecordId);
+        const totalAfterUpload = currentAttachmentCount + files.length;
+        
+        if (totalAfterUpload > maxAttachments) {
+            const allowedCount = maxAttachments - currentAttachmentCount;
+            if (allowedCount <= 0) {
+                showToast('error', `每个销售记录最多只能有${maxAttachments}个附件，当前已有${currentAttachmentCount}个`);
+                return;
+            } else {
+                showToast('error', `每个销售记录最多只能有${maxAttachments}个附件，当前已有${currentAttachmentCount}个，只能再上传${allowedCount}个`);
+                return;
+            }
+        }
+
         // 根据阶段确定附件类型
         let attachmentType;
         if (this.salesRecord.stage === 'stage_1') {
@@ -469,6 +501,22 @@ class AttachmentsManager {
         if (!this.currentRecordId || !this.salesRecord) {
             showToast('error', '无法确定销售记录信息');
             return;
+        }
+
+        // 检查附件数量限制
+        const maxAttachments = 20;
+        const currentAttachmentCount = await this.getCurrentAttachmentCount(this.currentRecordId);
+        const totalAfterUpload = currentAttachmentCount + files.length;
+        
+        if (totalAfterUpload > maxAttachments) {
+            const allowedCount = maxAttachments - currentAttachmentCount;
+            if (allowedCount <= 0) {
+                showToast('error', `每个销售记录最多只能有${maxAttachments}个附件，当前已有${currentAttachmentCount}个`);
+                return;
+            } else {
+                showToast('error', `每个销售记录最多只能有${maxAttachments}个附件，当前已有${currentAttachmentCount}个，只能再上传${allowedCount}个`);
+                return;
+            }
         }
 
         // 根据阶段确定附件类型
@@ -677,6 +725,28 @@ class AttachmentsManager {
         return this.selectedFiles;
     }
 
+    // 获取当前销售记录的附件数量
+    async getCurrentAttachmentCount(recordId) {
+        try {
+            const response = await fetch(`/api/v1/attachments/${recordId}`, {
+                headers: {
+                    'Authorization': `Bearer ${getToken()}`
+                }
+            });
+
+            if (!response.ok) {
+                console.error('获取附件数量失败');
+                return 0;
+            }
+
+            const attachments = await response.json();
+            return attachments.length;
+        } catch (error) {
+            console.error('获取附件数量失败:', error);
+            return 0;
+        }
+    }
+
     // 更新主列表中指定记录的附件数量显示
     async updateMainListAttachmentCount(recordId) {
         try {
@@ -724,4 +794,4 @@ class AttachmentsManager {
 
 // 创建全局实例
 window.attachmentsManager = new AttachmentsManager();
-console.log('AttachmentsManager已创建'); 
+console.log('AttachmentsManager已创建');

@@ -851,9 +851,9 @@ async function handleSaveSales() {
           remarks: remarksEl ? remarksEl.value.trim() || null : null,
           exchange_rate: exchangeRateEl && exchangeRateEl.value ? parseFloat(exchangeRateEl.value) : null,
           factory_price: factoryPriceEl && factoryPriceEl.value ? parseFloat(factoryPriceEl.value) : null,
-          refund_amount: refundAmountEl && refundAmountEl.value ? parseFloat(refundAmountEl.value) : null,
-          tax_refund: taxRefundEl && taxRefundEl.value ? parseFloat(taxRefundEl.value) : null,
-          profit: profitEl && profitEl.value ? parseFloat(profitEl.value) : null
+          refund_amount: refundAmountEl && refundAmountEl.value ? parseFloat(refundAmountEl.value) : 0,
+          tax_refund: taxRefundEl && taxRefundEl.value ? parseFloat(taxRefundEl.value) : 0,
+          profit: profitEl && profitEl.value ? parseFloat(profitEl.value) : 0
         };
         console.log('阶段一编辑：保存所有基本信息');
       } else if (currentRecord.stage === 'stage_3') {
@@ -867,10 +867,10 @@ async function handleSaveSales() {
         formData = {
           remarks: remarksEl ? remarksEl.value.trim() || null : null,
           exchange_rate: exchangeRateEl && exchangeRateEl.value ? parseFloat(exchangeRateEl.value) : null,
-          factory_price: factoryPriceEl && factoryPriceEl.value ? parseFloat(factoryPriceEl.value) : null,
-          refund_amount: refundAmountEl && refundAmountEl.value ? parseFloat(refundAmountEl.value) : null,
-          tax_refund: taxRefundEl && taxRefundEl.value ? parseFloat(taxRefundEl.value) : null,
-          profit: profitEl && profitEl.value ? parseFloat(profitEl.value) : null
+          factory_price: factoryPriceEl && factoryPriceEl.value ? parseFloat(factoryPriceEl.value) : 0,
+          refund_amount: refundAmountEl && refundAmountEl.value ? parseFloat(refundAmountEl.value) : 0,
+          tax_refund: taxRefundEl && taxRefundEl.value ? parseFloat(taxRefundEl.value) : 0,
+          profit: profitEl && profitEl.value ? parseFloat(profitEl.value) : 0
         };
         console.log('阶段三编辑：保存备注和财务字段');
       } else {
@@ -960,9 +960,10 @@ async function handleSaveSales() {
       
       if (exchangeRateEl && exchangeRateEl.value) formData.append('exchange_rate', parseFloat(exchangeRateEl.value));
       if (factoryPriceEl && factoryPriceEl.value) formData.append('factory_price', parseFloat(factoryPriceEl.value));
-      if (refundAmountEl && refundAmountEl.value) formData.append('refund_amount', parseFloat(refundAmountEl.value));
-      if (taxRefundEl && taxRefundEl.value) formData.append('tax_refund', parseFloat(taxRefundEl.value));
-      if (profitEl && profitEl.value) formData.append('profit', parseFloat(profitEl.value));
+      // 确保必需的财务字段总是有值，即使为0
+      formData.append('refund_amount', refundAmountEl && refundAmountEl.value ? parseFloat(refundAmountEl.value) : 0);
+      formData.append('tax_refund', taxRefundEl && taxRefundEl.value ? parseFloat(taxRefundEl.value) : 0);
+      formData.append('profit', profitEl && profitEl.value ? parseFloat(profitEl.value) : 0);
       
       // 添加文件（如果有）
       const files = window.attachmentsManager ? window.attachmentsManager.getFormFiles() : [];
@@ -2235,14 +2236,14 @@ function calculateProfit() {
       procurementTotal += amount;
     });
     
-    // 计算利润：总价 × 汇率 - 出厂价格 - 运费总和 - 采购总和 + 退款 + 退税
-    const profit = (totalPrice * exchangeRate) - factoryPrice - shippingTotal - procurementTotal + refundAmount + taxRefund;
+    // 计算利润：总价 × 汇率 - 出厂价格 - 运费总和 - 采购总和 - 退款 + 退税
+    const profit = (totalPrice * exchangeRate) - factoryPrice - shippingTotal - procurementTotal - refundAmount + taxRefund;
     
     // 设置利润值
     profitEl.value = profit.toFixed(2);
     
     // 显示计算公式
-    const formulaText = `${totalPrice} × ${exchangeRate} - ${factoryPrice} - ${shippingTotal} - ${procurementTotal} + ${refundAmount} + ${taxRefund} = ${profit.toFixed(2)}`;
+    const formulaText = `${totalPrice} × ${exchangeRate} - ${factoryPrice} - ${shippingTotal} - ${procurementTotal} - ${refundAmount} + ${taxRefund} = ${profit.toFixed(2)}`;
     
     // 查找或创建公式显示元素
     let formulaElement = document.getElementById('profit-formula');

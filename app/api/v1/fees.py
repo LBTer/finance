@@ -1,6 +1,6 @@
 import logging
 from typing import Annotated, List, Optional
-from fastapi import APIRouter, Depends, HTTPException, status, Query
+from fastapi import APIRouter, Depends, HTTPException, status, Query, Request
 from sqlalchemy import select, desc, func
 from sqlalchemy.orm import joinedload
 from datetime import datetime, UTC
@@ -10,11 +10,13 @@ from app.core.permissions import Action, check_sales_record_permissions, get_sal
 from app.models.user import User, UserRole
 from app.models.fees import ShippingFees
 from app.models.sales_record import SalesRecord, OrderStage
+from app.models.audit_log import AuditAction, AuditResourceType
 from app.schemas.fees import (
     ShippingFeesCreate,
     ShippingFeesUpdate,
     ShippingFeesResponse
 )
+from app.services.audit_service import AuditService
 from app.utils.logger import get_logger
 
 # 获取当前模块的logger
@@ -145,7 +147,8 @@ async def create_shipping_fee(
     *,
     db: AsyncSessionDep,
     current_user: Annotated[User, Depends(get_current_user)],
-    fee_in: ShippingFeesCreate
+    fee_in: ShippingFeesCreate,
+    request: Request
 ) -> ShippingFees:
     """
     创建运费记录
@@ -198,6 +201,28 @@ async def create_shipping_fee(
     )
     final_fee = result.unique().scalar_one()
     
+    # 记录审计日志
+    try:
+        await AuditService.log_action(
+            db=db,
+            user_id=current_user.id,
+            action=AuditAction.CREATE,
+            resource_type=AuditResourceType.SHIPPING_FEES,
+            resource_id=final_fee.id,
+            description="创建运费记录",
+            details={
+                "fee_id": final_fee.id,
+                "sales_record_id": final_fee.sales_record_id,
+                "shipping_fee": float(final_fee.shipping_fee),
+                "logistics_type": final_fee.logistics_type,
+                "logistics_company": final_fee.logistics_company,
+                "payment_method": final_fee.payment_method
+            },
+            request=request
+        )
+    except Exception as audit_error:
+        logger.warning(f"记录审计日志失败: {audit_error}")
+    
     logger.info(f"运费记录创建成功 - fee_id: {final_fee.id}")
     return final_fee
 
@@ -207,7 +232,8 @@ async def update_shipping_fee(
     *,
     db: AsyncSessionDep,
     current_user: Annotated[User, Depends(get_current_user)],
-    fee_in: ShippingFeesUpdate
+    fee_in: ShippingFeesUpdate,
+    request: Request
 ) -> ShippingFees:
     """
     更新运费记录
@@ -242,6 +268,15 @@ async def update_shipping_fee(
             detail="关联的销售记录已处于最终阶段，不可编辑"
         )
     
+    # 记录更新前的数据用于审计
+    old_data = {
+        "shipping_fee": float(fee.shipping_fee),
+        "logistics_type": fee.logistics_type,
+        "logistics_company": fee.logistics_company,
+        "payment_method": fee.payment_method,
+        "remarks": fee.remarks
+    }
+    
     # 更新字段
     update_data = fee_in.model_dump(exclude_unset=True)
     for field, value in update_data.items():
@@ -260,6 +295,43 @@ async def update_shipping_fee(
     )
     final_fee = result.unique().scalar_one()
     
+    # 记录审计日志
+    try:
+        # 获取更新后的数据
+        new_data = {
+            "shipping_fee": float(final_fee.shipping_fee),
+            "logistics_type": final_fee.logistics_type,
+            "logistics_company": final_fee.logistics_company,
+            "payment_method": final_fee.payment_method,
+            "remarks": final_fee.remarks
+        }
+        
+        # 找出变更的字段
+        changed_fields = {}
+        for field, new_value in new_data.items():
+            if field in old_data and old_data[field] != new_value:
+                changed_fields[field] = {
+                    "old": old_data[field],
+                    "new": new_value
+                }
+        
+        await AuditService.log_action(
+            db=db,
+            user_id=current_user.id,
+            action=AuditAction.UPDATE,
+            resource_type=AuditResourceType.SHIPPING_FEES,
+            resource_id=fee_id,
+            description="更新运费记录",
+            details={
+                "fee_id": fee_id,
+                "sales_record_id": final_fee.sales_record_id,
+                "changed_fields": changed_fields
+            },
+            request=request
+        )
+    except Exception as audit_error:
+        logger.warning(f"记录审计日志失败: {audit_error}")
+    
     logger.info(f"运费记录更新成功 - fee_id: {fee_id}")
     return final_fee
 
@@ -267,7 +339,8 @@ async def update_shipping_fee(
 async def delete_shipping_fee(
     fee_id: int,
     db: AsyncSessionDep,
-    current_user: Annotated[User, Depends(get_current_user)]
+    current_user: Annotated[User, Depends(get_current_user)],
+    request: Request
 ) -> dict:
     """
     删除运费记录
@@ -301,8 +374,34 @@ async def delete_shipping_fee(
             detail="关联的销售记录已处于最终阶段，不可删除"
         )
     
+    # 保存删除前的数据用于审计
+    fee_data = {
+        "fee_id": fee_id,
+        "sales_record_id": fee.sales_record_id,
+        "shipping_fee": float(fee.shipping_fee),
+        "logistics_type": fee.logistics_type,
+        "logistics_company": fee.logistics_company,
+        "payment_method": fee.payment_method,
+        "remarks": fee.remarks
+    }
+    
     await db.delete(fee)
     await db.commit()
+    
+    # 记录审计日志
+    try:
+        await AuditService.log_action(
+            db=db,
+            user_id=current_user.id,
+            action=AuditAction.DELETE,
+            resource_type=AuditResourceType.SHIPPING_FEES,
+            resource_id=fee_id,
+            description="删除运费记录",
+            details=fee_data,
+            request=request
+        )
+    except Exception as audit_error:
+        logger.warning(f"记录审计日志失败: {audit_error}")
     
     logger.info(f"运费记录删除成功 - fee_id: {fee_id}")
     return {"message": "运费记录删除成功"}
@@ -333,4 +432,4 @@ async def get_shipping_fees_stats(
     return {
         "total_count": stats.total_count,
         "total_amount": float(stats.total_amount)
-    } 
+    }

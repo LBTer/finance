@@ -1,6 +1,6 @@
 import logging
 from typing import Annotated, List
-from fastapi import APIRouter, Depends, HTTPException, status, UploadFile, File, Form
+from fastapi import APIRouter, Depends, HTTPException, status, UploadFile, File, Form, Request
 from fastapi.responses import FileResponse
 from sqlalchemy import select, delete
 from sqlalchemy.orm import joinedload
@@ -10,7 +10,9 @@ from app.core.permissions import Action, check_sales_record_permissions, get_sal
 from app.models.user import User
 from app.models.sales_record import SalesRecord
 from app.models.attachment import Attachment, AttachmentType
+from app.models.audit_log import AuditAction, AuditResourceType
 from app.schemas.attachment import AttachmentResponse, AttachmentCreate
+from app.services.audit_service import AuditService
 from app.utils.file_handler import file_handler
 from app.utils.logger import get_logger
 
@@ -32,6 +34,9 @@ ALLOWED_CONTENT_TYPES = {
 
 # 最大文件大小：10MB
 MAX_FILE_SIZE = 10 * 1024 * 1024
+
+# 每个销售记录最大附件数量
+MAX_ATTACHMENTS_PER_RECORD = 20
 
 
 async def validate_and_save_attachments(
@@ -67,6 +72,28 @@ async def validate_and_save_attachments(
         )
     
     logger.info(f"开始处理附件 - sales_record_id: {sales_record_id}, 附件类型: {attachment_type}, 文件数量: {len(files)}, user_id: {user_id}")
+    
+    # 检查当前销售记录的附件数量
+    result = await db.execute(
+        select(Attachment).where(Attachment.sales_record_id == sales_record_id)
+    )
+    current_attachments = result.scalars().all()
+    current_count = len(current_attachments)
+    
+    # 检查附件数量限制
+    total_after_upload = current_count + len(files)
+    if total_after_upload > MAX_ATTACHMENTS_PER_RECORD:
+        allowed_count = MAX_ATTACHMENTS_PER_RECORD - current_count
+        if allowed_count <= 0:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"每个销售记录最多只能有{MAX_ATTACHMENTS_PER_RECORD}个附件，当前已有{current_count}个"
+            )
+        else:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"每个销售记录最多只能有{MAX_ATTACHMENTS_PER_RECORD}个附件，当前已有{current_count}个，只能再上传{allowed_count}个"
+            )
     
     # 验证所有文件
     for file in files:
@@ -148,7 +175,8 @@ async def upload_attachments(
     attachment_type: Annotated[str, Form()],
     files: Annotated[List[UploadFile], File(...)],
     db: AsyncSessionDep,
-    current_user: Annotated[User, Depends(get_current_user)]
+    current_user: Annotated[User, Depends(get_current_user)],
+    request: Request
 ) -> List[Attachment]:
     """
     上传销售记录的附件
@@ -210,6 +238,27 @@ async def upload_attachments(
         await db.commit()
         for attachment in attachments:
             await db.refresh(attachment)
+        
+        # 记录审计日志
+        try:
+            file_names = [att.original_filename for att in attachments]
+            await AuditService.log_action(
+                db=db,
+                user_id=current_user.id,
+                action=AuditAction.CREATE,
+                resource_type=AuditResourceType.ATTACHMENT,
+                resource_id=sales_record_id,
+                description=f"上传{attachment_type}附件",
+                details={
+                    "attachment_type": attachment_type,
+                    "file_count": len(attachments),
+                    "file_names": file_names,
+                    "sales_record_id": sales_record_id
+                },
+                request=request
+            )
+        except Exception as audit_error:
+            logger.warning(f"记录审计日志失败: {audit_error}")
         
         logger.info(f"附件上传完成 - sales_record_id: {sales_record_id}, 附件类型: {attachment_type}, 成功上传 {len(attachments)} 个文件")
         return attachments
@@ -326,7 +375,8 @@ async def download_attachment(
 async def delete_attachment(
     attachment_id: int,
     db: AsyncSessionDep,
-    current_user: Annotated[User, Depends(get_current_user)]
+    current_user: Annotated[User, Depends(get_current_user)],
+    request: Request
 ) -> dict:
     """
     删除附件
@@ -401,6 +451,26 @@ async def delete_attachment(
         else:
             logger.info(f"文件仍被其他记录引用，不删除 - stored_filename: {stored_filename}")
         
+        # 记录审计日志
+        try:
+            await AuditService.log_action(
+                db=db,
+                user_id=current_user.id,
+                action=AuditAction.DELETE,
+                resource_type=AuditResourceType.ATTACHMENT,
+                resource_id=attachment_id,
+                description=f"删除{attachment.attachment_type}附件",
+                details={
+                    "attachment_id": attachment_id,
+                    "attachment_type": attachment.attachment_type,
+                    "original_filename": original_filename,
+                    "sales_record_id": attachment.sales_record_id
+                },
+                request=request
+            )
+        except Exception as audit_error:
+            logger.warning(f"记录审计日志失败: {audit_error}")
+        
         logger.info(f"附件删除成功 - attachment_id: {attachment_id}, 原文件名: {original_filename}")
         return {"message": f"附件 {original_filename} 已删除"}
     
@@ -420,4 +490,4 @@ async def get_attachment_sales_record(db, attachment_id: int) -> SalesRecord:
         .join(Attachment, SalesRecord.id == Attachment.sales_record_id)
         .where(Attachment.id == attachment_id)
     )
-    return result.scalar_one_or_none() 
+    return result.scalar_one_or_none()

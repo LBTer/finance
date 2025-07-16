@@ -52,6 +52,12 @@ class User(Base):
         foreign_keys="SalesRecord.user_id"
     )
     
+    audit_logs: Mapped[List["AuditLog"]] = relationship(
+        "AuditLog",
+        back_populates="user",
+        cascade="all, delete-orphan"
+    )
+    
     def has_sales_function(self) -> bool:
         """检查用户是否具有销售职能"""
         return self.role in [UserRole.SENIOR.value, UserRole.ADMIN.value] or \
@@ -73,4 +79,4 @@ class User(Base):
     def __repr__(self) -> str:
         # 完全避免访问任何可能触发数据库查询的SQLAlchemy属性
         # 使用对象的内存地址来提供唯一标识
-        return f"<User at {hex(id(self))}>" 
+        return f"<User at {hex(id(self))}>"

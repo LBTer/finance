@@ -1,6 +1,6 @@
 import logging
 from typing import Annotated, List, Optional
-from fastapi import APIRouter, Depends, HTTPException, status, Query, UploadFile, File, Form
+from fastapi import APIRouter, Depends, HTTPException, status, Query, UploadFile, File, Form, Request
 from sqlalchemy import select, or_
 from sqlalchemy.orm import joinedload
 from datetime import datetime, UTC
@@ -10,12 +10,14 @@ from app.core.permissions import Action, check_sales_record_permissions, get_sal
 from app.models.user import User, UserRole
 from app.models.sales_record import OrderSource, SalesRecord, OrderStage, OrderType
 from app.models.attachment import Attachment, AttachmentType
+from app.models.audit_log import AuditAction, AuditResourceType
 from app.schemas.sales_record import (
     SalesRecordCreate,
     SalesRecordUpdate,
     SalesRecordResponse
 )
 from app.utils.logger import get_logger
+from app.services.audit_service import AuditService
 
 # 导入附件处理函数
 from app.api.v1.attachments import validate_and_save_attachments
@@ -66,6 +68,7 @@ async def create_sales_record(
     *,
     db: AsyncSessionDep,
     current_user: Annotated[User, Depends(get_current_user)],
+    request: Request,
     # 表单字段
     order_number: str = Form(...),
     order_type: str = Form(...),
@@ -181,6 +184,32 @@ async def create_sales_record(
         final_record = result.unique().scalar_one()
         
         logger.info(f"销售记录创建完成 - id: {final_record.id}, 附件数量: {len(final_record.attachments)}")
+        
+        # 记录审计日志
+        try:
+            audit_details = {
+                "order_number": final_record.order_number,
+                "order_type": final_record.order_type,
+                "order_source": final_record.order_source,
+                "product_name": final_record.product_name,
+                "quantity": final_record.quantity,
+                "unit_price": final_record.unit_price,
+                "total_price": final_record.total_price,
+                "attachments_count": len(final_record.attachments)
+            }
+            await AuditService.log_action(
+                db=db,
+                user_id=current_user.id,
+                action=AuditAction.CREATE,
+                resource_type=AuditResourceType.SALES_RECORD,
+                resource_id=final_record.id,
+                description=f"创建销售记录: {final_record.order_number}",
+                details=audit_details,
+                request=request
+            )
+        except Exception as audit_error:
+            logger.warning(f"记录审计日志失败: {audit_error}")
+        
         return final_record
     
     except Exception as e:
@@ -341,7 +370,8 @@ async def update_sales_record(
     record_id: int,
     record_in: SalesRecordUpdate,
     db: AsyncSessionDep,
-    current_user: Annotated[User, Depends(get_current_user)]
+    current_user: Annotated[User, Depends(get_current_user)],
+    request: Request
 ) -> SalesRecord:
     """
     更新销售记录基本信息
@@ -421,6 +451,27 @@ async def update_sales_record(
         record = result.unique().scalar_one()
         
         logger.info(f"销售记录更新成功 - record_id: {record_id}")
+        
+        # 记录审计日志
+        try:
+            audit_details = {
+                "updated_fields": list(update_data.keys()),
+                "changes": update_data,
+                "order_number": record.order_number
+            }
+            await AuditService.log_action(
+                db=db,
+                user_id=current_user.id,
+                action=AuditAction.UPDATE,
+                resource_type=AuditResourceType.SALES_RECORD,
+                resource_id=record_id,
+                description=f"更新销售记录: {record.order_number}",
+                details=audit_details,
+                request=request
+            )
+        except Exception as audit_error:
+            logger.warning(f"记录审计日志失败: {audit_error}")
+        
         return record
         
     except Exception as e:
@@ -436,7 +487,8 @@ async def update_sales_record(
 async def delete_sales_record(
     record_id: int,
     db: AsyncSessionDep,
-    current_user: Annotated[User, Depends(get_current_user)]
+    current_user: Annotated[User, Depends(get_current_user)],
+    request: Request
 ) -> dict:
     """
     删除销售记录（同时删除相关附件文件）
@@ -502,6 +554,25 @@ async def delete_sales_record(
                 except Exception as file_error:
                     logger.error(f"处理附件文件时出错 - {attachment_info['stored_filename']}: {file_error}")
         
+        # 记录审计日志
+        try:
+            audit_details = {
+                "order_number": order_number,
+                "deleted_attachments_count": len(attachments_to_delete)
+            }
+            await AuditService.log_action(
+                db=db,
+                user_id=current_user.id,
+                action=AuditAction.DELETE,
+                resource_type=AuditResourceType.SALES_RECORD,
+                resource_id=record_id,
+                description=f"删除销售记录: {order_number}",
+                details=audit_details,
+                request=request
+            )
+        except Exception as audit_error:
+            logger.warning(f"记录审计日志失败: {audit_error}")
+        
         return {"message": "记录及相关附件已删除"}
     except Exception as e:
         logger.error(f"删除记录失败 - id: {record_id}: {str(e)}", exc_info=True)
@@ -516,7 +587,8 @@ async def delete_sales_record(
 async def submit_sales_record(
     record_id: int,
     db: AsyncSessionDep,
-    current_user: Annotated[User, Depends(get_current_user)]
+    current_user: Annotated[User, Depends(get_current_user)],
+    request: Request
 ) -> SalesRecord:
     """
     提交销售记录到下一阶段
@@ -595,6 +667,28 @@ async def submit_sales_record(
         record = result.unique().scalar_one()
         
         logger.info(f"销售记录提交成功 - record_id: {record_id}, new_stage: {record.stage}")
+        
+        # 记录审计日志
+        try:
+            audit_details = {
+                "order_number": record.order_number,
+                "previous_stage": current_stage,
+                "new_stage": record.stage,
+                "stage_transition": f"{current_stage} -> {record.stage}"
+            }
+            await AuditService.log_action(
+                db=db,
+                user_id=current_user.id,
+                action=AuditAction.SUBMIT,
+                resource_type=AuditResourceType.SALES_RECORD,
+                resource_id=record_id,
+                description=f"提交销售记录: {record.order_number} (阶段 {current_stage} -> {record.stage})",
+                details=audit_details,
+                request=request
+            )
+        except Exception as audit_error:
+            logger.warning(f"记录审计日志失败: {audit_error}")
+        
         return record
         
     except HTTPException:
@@ -613,7 +707,8 @@ async def submit_sales_record(
 async def approve_sales_record(
     record_id: int,
     db: AsyncSessionDep,
-    current_user: Annotated[User, Depends(get_current_user)]
+    current_user: Annotated[User, Depends(get_current_user)],
+    request: Request
 ) -> SalesRecord:
     """
     审核通过销售记录
@@ -696,6 +791,29 @@ async def approve_sales_record(
         record = result.unique().scalar_one()
         
         logger.info(f"销售记录审核成功 - record_id: {record_id}, new_stage: {record.stage}")
+        
+        # 记录审计日志
+        try:
+            audit_details = {
+                "order_number": record.order_number,
+                "previous_stage": current_stage,
+                "new_stage": record.stage,
+                "approval_type": "logistics" if current_stage == OrderStage.STAGE_2.value else "final",
+                "stage_transition": f"{current_stage} -> {record.stage}"
+            }
+            await AuditService.log_action(
+                db=db,
+                user_id=current_user.id,
+                action=AuditAction.APPROVE,
+                resource_type=AuditResourceType.SALES_RECORD,
+                resource_id=record_id,
+                description=f"审核通过销售记录: {record.order_number} (阶段 {current_stage} -> {record.stage})",
+                details=audit_details,
+                request=request
+            )
+        except Exception as audit_error:
+            logger.warning(f"记录审计日志失败: {audit_error}")
+        
         return record
         
     except HTTPException:
@@ -714,7 +832,8 @@ async def approve_sales_record(
 async def withdraw_sales_record(
     record_id: int,
     db: AsyncSessionDep,
-    current_user: Annotated[User, Depends(get_current_user)]
+    current_user: Annotated[User, Depends(get_current_user)],
+    request: Request
 ) -> SalesRecord:
     """
     撤回销售记录到指定阶段
@@ -821,6 +940,36 @@ async def withdraw_sales_record(
         record = result.unique().scalar_one()
         
         logger.info(f"销售记录撤回成功 - record_id: {record_id}, new_stage: {record.stage}")
+        
+        # 记录审计日志
+        try:
+            audit_details = {
+                "order_number": record.order_number,
+                "previous_stage": current_stage,
+                "new_stage": record.stage,
+                "stage_transition": f"{current_stage} -> {record.stage}",
+                "cleared_approvals": []
+            }
+            
+            # 记录清除的审核信息
+            if current_stage == OrderStage.STAGE_3.value:
+                audit_details["cleared_approvals"].append("logistics_approval")
+            elif current_stage == OrderStage.STAGE_5.value:
+                audit_details["cleared_approvals"].append("final_approval")
+            
+            await AuditService.log_action(
+                db=db,
+                user_id=current_user.id,
+                action=AuditAction.WITHDRAW,
+                resource_type=AuditResourceType.SALES_RECORD,
+                resource_id=record_id,
+                description=f"撤回销售记录: {record.order_number} (阶段 {current_stage} -> {record.stage})",
+                details=audit_details,
+                request=request
+            )
+        except Exception as audit_error:
+            logger.warning(f"记录审计日志失败: {audit_error}")
+        
         return record
         
     except HTTPException:
@@ -832,4 +981,4 @@ async def withdraw_sales_record(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"撤回记录失败: {str(e)}"
-        ) 
+        )

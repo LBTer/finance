@@ -1,6 +1,6 @@
 import logging
 from typing import Annotated, List, Optional
-from fastapi import APIRouter, Depends, HTTPException, status, Query
+from fastapi import APIRouter, Depends, HTTPException, status, Query, Request
 from sqlalchemy import select, desc, func
 from sqlalchemy.orm import joinedload
 from datetime import datetime, UTC
@@ -16,6 +16,8 @@ from app.schemas.procurement import (
     ProcurementResponse
 )
 from app.utils.logger import get_logger
+from app.services.audit_service import AuditService
+from app.schemas.audit_log import AuditAction, AuditResourceType
 
 # 获取当前模块的logger
 logger = get_logger(__name__)
@@ -145,7 +147,8 @@ async def create_procurement(
     *,
     db: AsyncSessionDep,
     current_user: Annotated[User, Depends(get_current_user)],
-    procurement_in: ProcurementCreate
+    procurement_in: ProcurementCreate,
+    request: Request
 ) -> Procurement:
     """
     创建采购记录
@@ -199,6 +202,32 @@ async def create_procurement(
     )
     final_procurement = result.unique().scalar_one()
     
+    # 记录审计日志
+    try:
+        procurement_data = {
+            "procurement_id": final_procurement.id,
+            "sales_record_id": final_procurement.sales_record_id,
+            "supplier": final_procurement.supplier,
+            "procurement_item": final_procurement.procurement_item,
+            "quantity": final_procurement.quantity,
+            "amount": float(final_procurement.amount),
+            "payment_method": final_procurement.payment_method,
+            "remarks": final_procurement.remarks
+        }
+        
+        await AuditService.log_action(
+            db=db,
+            user_id=current_user.id,
+            action=AuditAction.CREATE,
+            resource_type=AuditResourceType.PROCUREMENT,
+            resource_id=final_procurement.id,
+            description="创建采购记录",
+            details=procurement_data,
+            request=request
+        )
+    except Exception as audit_error:
+        logger.warning(f"记录审计日志失败: {audit_error}")
+    
     logger.info(f"采购记录创建成功 - procurement_id: {final_procurement.id}")
     return final_procurement
 
@@ -208,7 +237,8 @@ async def update_procurement(
     *,
     db: AsyncSessionDep,
     current_user: Annotated[User, Depends(get_current_user)],
-    procurement_in: ProcurementUpdate
+    procurement_in: ProcurementUpdate,
+    request: Request
 ) -> Procurement:
     """
     更新采购记录
@@ -243,6 +273,16 @@ async def update_procurement(
             detail="关联的销售记录已处于最终阶段，不可编辑"
         )
     
+    # 记录更新前的数据
+    old_data = {
+        "supplier": procurement.supplier,
+        "procurement_item": procurement.procurement_item,
+        "quantity": procurement.quantity,
+        "amount": float(procurement.amount),
+        "payment_method": procurement.payment_method,
+        "remarks": procurement.remarks
+    }
+    
     # 更新字段
     update_data = procurement_in.model_dump(exclude_unset=True)
     for field, value in update_data.items():
@@ -261,6 +301,38 @@ async def update_procurement(
     )
     final_procurement = result.unique().scalar_one()
     
+    # 记录审计日志
+    try:
+        # 获取更新后的数据
+        new_data = {
+            "supplier": final_procurement.supplier,
+            "procurement_item": final_procurement.procurement_item,
+            "quantity": final_procurement.quantity,
+            "amount": float(final_procurement.amount),
+            "payment_method": final_procurement.payment_method,
+            "remarks": final_procurement.remarks
+        }
+        
+        # 找出变更的字段
+        changes = {}
+        for key in old_data:
+            if old_data[key] != new_data[key]:
+                changes[key] = {"old": old_data[key], "new": new_data[key]}
+        
+        if changes:
+            await AuditService.log_action(
+                db=db,
+                user_id=current_user.id,
+                action=AuditAction.UPDATE,
+                resource_type=AuditResourceType.PROCUREMENT,
+                resource_id=procurement_id,
+                description="更新采购记录",
+                details={"changes": changes, "procurement_id": procurement_id, "sales_record_id": final_procurement.sales_record_id},
+                request=request
+            )
+    except Exception as audit_error:
+        logger.warning(f"记录审计日志失败: {audit_error}")
+    
     logger.info(f"采购记录更新成功 - procurement_id: {procurement_id}")
     return final_procurement
 
@@ -268,7 +340,8 @@ async def update_procurement(
 async def delete_procurement(
     procurement_id: int,
     db: AsyncSessionDep,
-    current_user: Annotated[User, Depends(get_current_user)]
+    current_user: Annotated[User, Depends(get_current_user)],
+    request: Request
 ) -> dict:
     """
     删除采购记录
@@ -302,8 +375,35 @@ async def delete_procurement(
             detail="关联的销售记录已处于最终阶段，不可删除"
         )
     
+    # 保存删除前的数据用于审计
+    procurement_data = {
+        "procurement_id": procurement_id,
+        "sales_record_id": procurement.sales_record_id,
+        "supplier": procurement.supplier,
+        "procurement_item": procurement.procurement_item,
+        "quantity": procurement.quantity,
+        "amount": float(procurement.amount),
+        "payment_method": procurement.payment_method,
+        "remarks": procurement.remarks
+    }
+    
     await db.delete(procurement)
     await db.commit()
+    
+    # 记录审计日志
+    try:
+        await AuditService.log_action(
+            db=db,
+            user_id=current_user.id,
+            action=AuditAction.DELETE,
+            resource_type=AuditResourceType.PROCUREMENT,
+            resource_id=procurement_id,
+            description="删除采购记录",
+            details=procurement_data,
+            request=request
+        )
+    except Exception as audit_error:
+        logger.warning(f"记录审计日志失败: {audit_error}")
     
     logger.info(f"采购记录删除成功 - procurement_id: {procurement_id}")
     return {"message": "采购记录删除成功"}
@@ -336,4 +436,4 @@ async def get_procurement_stats(
         "total_count": stats.total_count,
         "total_amount": float(stats.total_amount),
         "total_quantity": stats.total_quantity
-    } 
+    }

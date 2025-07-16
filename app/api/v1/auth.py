@@ -3,7 +3,7 @@
 """
 from datetime import timedelta
 from typing import Annotated
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, status, Request
 from fastapi.security import OAuth2PasswordRequestForm
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -12,15 +12,18 @@ from app.core.config import settings
 from app.core.security import create_access_token, get_password_hash, verify_password
 from app.core.dependencies import AsyncSessionDep, get_current_active_superuser, get_current_active_senior_or_admin
 from app.models.user import User, UserFunction, UserRole
+from app.models.audit_log import AuditAction, AuditResourceType
 from app.schemas.user import UserCreate, UserResponse, PasswordReset, UserInfoUpdate
 from app.utils.validators import Validators
+from app.services.audit_service import AuditService
 
 router = APIRouter(prefix="/auth", tags=["认证"])
 
 @router.post("/login")
 async def login(
     db: AsyncSessionDep,
-    form_data: Annotated[OAuth2PasswordRequestForm, Depends()]
+    form_data: Annotated[OAuth2PasswordRequestForm, Depends()],
+    request: Request
 ) -> dict:
     """
     用户登录（使用手机号）
@@ -60,6 +63,28 @@ async def login(
         expires_delta=access_token_expires
     )
     
+    # 记录审计日志
+    try:
+        audit_details = {
+            "phone": user.phone,
+            "user_name": user.full_name,
+            "role": user.role,
+            "function": user.function
+        }
+        await AuditService.log_action(
+            db=db,
+            user_id=user.id,
+            action=AuditAction.LOGIN,
+            resource_type=AuditResourceType.USER,
+            resource_id=user.id,
+            description=f"用户登录: {user.full_name} ({user.phone})",
+            details=audit_details,
+            request=request
+        )
+    except Exception as audit_error:
+        # 登录审计失败不应该影响登录流程
+        pass
+    
     return {
         "access_token": access_token,
         "token_type": "bearer"
@@ -70,7 +95,8 @@ async def register(
     *,
     db: AsyncSessionDep,
     user_in: UserCreate,
-    current_user: Annotated[User, Depends(get_current_active_senior_or_admin)]
+    current_user: Annotated[User, Depends(get_current_active_senior_or_admin)],
+    request: Request
 ) -> User:
     """
     注册新用户
@@ -152,13 +178,37 @@ async def register(
     await db.commit()
     await db.refresh(user)
     
+    # 记录审计日志
+    try:
+        audit_details = {
+            "created_user_phone": user.phone,
+            "created_user_name": user.full_name,
+            "created_user_role": user.role,
+            "created_user_function": user.function,
+            "created_by": current_user.full_name
+        }
+        await AuditService.log_action(
+            db=db,
+            user_id=current_user.id,
+            action=AuditAction.CREATE,
+            resource_type=AuditResourceType.USER,
+            resource_id=user.id,
+            description=f"创建用户: {user.full_name} ({user.phone})",
+            details=audit_details,
+            request=request
+        )
+    except Exception as audit_error:
+        # 审计失败不应该影响用户创建
+        pass
+    
     return user
 
 @router.post("/reset-password")
 async def reset_password(
     db: AsyncSessionDep,
     reset_data: PasswordReset,
-    current_user: Annotated[User, Depends(get_current_active_senior_or_admin)]
+    current_user: Annotated[User, Depends(get_current_active_senior_or_admin)],
+    request: Request
 ) -> dict:
     """
     重置用户密码
@@ -203,6 +253,28 @@ async def reset_password(
     user.password_hash = get_password_hash(reset_data.new_password)
     await db.commit()
     
+    # 记录审计日志
+    try:
+        audit_details = {
+            "target_user_phone": user.phone,
+            "target_user_name": user.full_name,
+            "reset_by": current_user.full_name,
+            "is_self_reset": user.id == current_user.id
+        }
+        await AuditService.log_action(
+            db=db,
+            user_id=current_user.id,
+            action=AuditAction.UPDATE,
+            resource_type=AuditResourceType.USER,
+            resource_id=user.id,
+            description=f"重置密码: {user.full_name} ({user.phone})",
+            details=audit_details,
+            request=request
+        )
+    except Exception as audit_error:
+        # 审计失败不应该影响密码重置
+        pass
+    
     return {"message": "密码重置成功"} 
 
 @router.put("/users/{user_id}/info", response_model=UserResponse)
@@ -210,7 +282,8 @@ async def update_user_info(
     user_id: int,
     user_update: UserInfoUpdate,
     db: AsyncSessionDep,
-    current_user: Annotated[User, Depends(get_current_active_superuser)]
+    current_user: Annotated[User, Depends(get_current_active_superuser)],
+    request: Request
 ) -> User:
     """
     修改用户信息
@@ -272,4 +345,39 @@ async def update_user_info(
     await db.commit()
     await db.refresh(user)
     
-    return user 
+    # 记录审计日志
+    try:
+        # 收集更新的字段
+        updated_fields = []
+        if user_update.full_name is not None:
+            updated_fields.append("full_name")
+        if user_update.email is not None:
+            updated_fields.append("email")
+        if user_update.role is not None:
+            updated_fields.append("role")
+        if user_update.function is not None:
+            updated_fields.append("function")
+        if user_update.is_active is not None:
+            updated_fields.append("is_active")
+        
+        audit_details = {
+            "target_user_phone": user.phone,
+            "target_user_name": user.full_name,
+            "updated_fields": updated_fields,
+            "updated_by": current_user.full_name
+        }
+        await AuditService.log_action(
+            db=db,
+            user_id=current_user.id,
+            action=AuditAction.UPDATE,
+            resource_type=AuditResourceType.USER,
+            resource_id=user.id,
+            description=f"更新用户信息: {user.full_name} ({user.phone})",
+            details=audit_details,
+            request=request
+        )
+    except Exception as audit_error:
+        # 审计失败不应该影响用户信息更新
+        pass
+    
+    return user

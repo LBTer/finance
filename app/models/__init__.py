@@ -3,6 +3,7 @@ from .sales_record import SalesRecord, OrderSource, OrderStage
 from .attachment import Attachment, AttachmentType
 from .fees import ShippingFees, LogisticsType
 from .procurement import Procurement
+from .audit_log import AuditLog, AuditAction, AuditResourceType
 
 __all__ = [
     "User",
@@ -15,5 +16,8 @@ __all__ = [
     "AttachmentType",
     "ShippingFees",
     "LogisticsType",
-    "Procurement"
-] 
+    "Procurement",
+    "AuditLog",
+    "AuditAction",
+    "AuditResourceType"
+]
