@@ -192,6 +192,52 @@ class AuditService:
         return responses, total
     
     @staticmethod
+    async def get_audit_log_by_id(
+        db: AsyncSession,
+        log_id: int
+    ) -> Optional[AuditLogResponse]:
+        """
+        根据ID获取单个审计日志
+        
+        Args:
+            db: 数据库会话
+            log_id: 审计日志ID
+            
+        Returns:
+            审计日志详情或None
+        """
+        query = (
+            select(AuditLog)
+            .options(selectinload(AuditLog.user))
+            .filter(AuditLog.id == log_id)
+        )
+        
+        result = await db.execute(query)
+        log = result.scalar_one_or_none()
+        
+        if not log:
+            return None
+        
+        response_data = {
+            "id": log.id,
+            "user_id": log.user_id,
+            "user_name": log.user.full_name if log.user else None,
+            "action": log.action,
+            "resource_type": log.resource_type,
+            "resource_id": log.resource_id,
+            "description": log.description,
+            "details": log.details,
+            "ip_address": log.ip_address,
+            "user_agent": log.user_agent,
+            "success": log.success,
+            "error_message": log.error_message,
+            "created_at": log.created_at,
+            "updated_at": log.updated_at
+        }
+        
+        return AuditLogResponse(**response_data)
+    
+    @staticmethod
     async def get_user_recent_actions(
         db: AsyncSession,
         user_id: int,

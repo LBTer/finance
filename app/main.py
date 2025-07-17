@@ -110,3 +110,8 @@ async def fees_page(request: Request):
 async def procurement_page(request: Request):
     return templates.TemplateResponse("procurement.html", {"request": request})
 
+# 审计记录页面
+@app.get("/audit", response_class=HTMLResponse)
+async def audit_page(request: Request):
+    return templates.TemplateResponse("audit.html", {"request": request})
+

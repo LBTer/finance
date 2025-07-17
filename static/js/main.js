@@ -226,14 +226,23 @@ async function initPage() {
       // 超级管理员可以看到所有内容
       adminOnlyElements.forEach(el => el.classList.remove('d-none'));
       superadminOnlyElements.forEach(el => el.classList.remove('d-none'));
+      // 显示审计记录菜单
+      const auditMenu = document.getElementById('audit-menu');
+      if (auditMenu) auditMenu.style.display = 'block';
     } else if (currentUser.role === 'senior') {
       // 高级用户可以看到管理员内容，但不能看到超级管理员内容
       adminOnlyElements.forEach(el => el.classList.remove('d-none'));
       superadminOnlyElements.forEach(el => el.classList.add('d-none'));
+      // 隐藏审计记录菜单
+      const auditMenu = document.getElementById('audit-menu');
+      if (auditMenu) auditMenu.style.display = 'none';
     } else {
       // 普通用户不能看到管理内容
       adminOnlyElements.forEach(el => el.classList.add('d-none'));
       superadminOnlyElements.forEach(el => el.classList.add('d-none'));
+      // 隐藏审计记录菜单
+      const auditMenu = document.getElementById('audit-menu');
+      if (auditMenu) auditMenu.style.display = 'none';
     }
   }
   
@@ -269,4 +278,4 @@ function logout() {
   localStorage.removeItem('userRole');
   localStorage.removeItem('userName');
   window.location.href = '/login';
-} 
+}

@@ -14,11 +14,12 @@ logger = get_logger(__name__)
 router = APIRouter()
 
 
-@router.get("/", response_model=dict)
+@router.get("", response_model=dict)
 async def get_audit_logs(
     db: AsyncSessionDep,
     current_user: Annotated[User, Depends(get_current_user)],
     user_id: Optional[int] = Query(None, description="用户ID"),
+    phone: Optional[str] = Query(None, description="电话号码"),
     action: Optional[str] = Query(None, description="操作类型"),
     resource_type: Optional[str] = Query(None, description="资源类型"),
     resource_id: Optional[int] = Query(None, description="资源ID"),
@@ -33,6 +34,8 @@ async def get_audit_logs(
     
     只有管理员和高级用户可以查看所有审计日志
     普通用户只能查看自己的操作记录
+    
+    支持通过电话号码查询用户的审计记录（仅管理员和高级用户）
     """
     try:
         # 权限检查
@@ -44,6 +47,28 @@ async def get_audit_logs(
                     detail="普通用户只能查看自己的操作记录"
                 )
             user_id = current_user.id
+        
+        # 通过电话号码查询用户ID
+        if phone is not None:
+            # 只有管理员和高级用户可以通过电话号码查询其他用户
+            if current_user.role not in [UserRole.ADMIN.value, UserRole.SENIOR.value]:
+                raise HTTPException(
+                    status_code=403,
+                    detail="普通用户不能通过电话号码查询其他用户的记录"
+                )
+            
+            # 查询用户
+            stmt = select(User).where(User.phone == phone)
+            result = await db.execute(stmt)
+            target_user = result.scalar_one_or_none()
+            
+            if target_user is None:
+                raise HTTPException(
+                    status_code=404,
+                    detail=f"未找到电话号码为 {phone} 的用户"
+                )
+            
+            user_id = target_user.id
         
         # 解析日期
         start_datetime = None
@@ -88,11 +113,14 @@ async def get_audit_logs(
         audit_logs, total = await AuditService.get_audit_logs(db, query)
         
         return {
-            "items": audit_logs,
-            "total": total,
-            "page": page,
-            "size": size,
-            "pages": (total + size - 1) // size
+            "success": True,
+            "data": {
+                "items": audit_logs,
+                "total": total,
+                "page": page,
+                "size": size,
+                "pages": (total + size - 1) // size
+            }
         }
         
     except HTTPException:
@@ -246,4 +274,47 @@ async def get_audit_stats(
         raise HTTPException(
             status_code=500,
             detail="获取审计统计信息失败"
+        )
+
+
+@router.get("/{log_id}", response_model=dict)
+async def get_audit_log_detail(
+    log_id: int,
+    db: AsyncSessionDep,
+    current_user: Annotated[User, Depends(get_current_user)]
+):
+    """
+    获取单个审计日志详情
+    
+    只有超级管理员可以查看审计日志详情
+    """
+    try:
+        # 权限检查 - 只有超级管理员可以查看
+        if current_user.role != UserRole.ADMIN.value:
+            raise HTTPException(
+                status_code=403,
+                detail="只有超级管理员可以查看审计日志详情"
+            )
+        
+        # 获取审计日志详情
+        audit_log = await AuditService.get_audit_log_by_id(db, log_id)
+        
+        if not audit_log:
+            raise HTTPException(
+                status_code=404,
+                detail="审计日志不存在"
+            )
+        
+        return {
+            "success": True,
+            "data": audit_log
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to get audit log detail: {e}")
+        raise HTTPException(
+            status_code=500,
+            detail="获取审计日志详情失败"
         )
