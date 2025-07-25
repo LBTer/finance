@@ -21,3 +21,6 @@ files/
 
 # 屏蔽打包文件
 *.tar
+
+# trae文件
+.vercel/

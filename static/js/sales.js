@@ -95,6 +95,12 @@ async function initSalesPage() {
     calculateProfitBtn.addEventListener('click', calculateProfit);
   }
   
+  // 绑定订单类型变化事件
+  const orderTypeSelect = document.getElementById('order-type');
+  if (orderTypeSelect) {
+    orderTypeSelect.addEventListener('change', handleOrderTypeChange);
+  }
+  
   // 审核按钮已移除，现在使用表格中的阶段管理按钮
   
   // 检查URL参数，如果有id参数则打开对应记录详情
@@ -288,13 +294,16 @@ function renderSalesTable(sales) {
     };
     const prefix = sourcePrefix[sale.order_source] || '未知';
     
+    // 根据订单类型确定货币符号
+    const currencySymbol = sale.order_type === 'domestic' ? '¥' : '$';
+    
     row.innerHTML = `
       <td>#${prefix}-${sale.id || 'N/A'}</td>
       <td>${sale.order_number || '-'}</td>
       <td>${sale.product_name || '-'}</td>
       <td>${sale.quantity || '0'}</td>
-      <td>$${sale.unit_price ? sale.unit_price.toFixed(2) : '0.00'}</td>
-      <td>$${sale.total_price ? sale.total_price.toFixed(2) : '0.00'}</td>
+      <td>${currencySymbol}${sale.unit_price ? sale.unit_price.toFixed(2) : '0.00'}</td>
+      <td>${currencySymbol}${sale.total_price ? sale.total_price.toFixed(2) : '0.00'}</td>
       <td><span class="${stageClass}">${stageText}</span></td>
       <td class="text-center">${attachmentBadge}</td>
       <td>${sale.user ? sale.user.full_name : '-'}</td>
@@ -477,6 +486,98 @@ function handleOrderTypeFilterChange() {
   loadSalesRecords();
 }
 
+// 处理订单类型选择变化
+function handleOrderTypeChange() {
+  const orderTypeSelect = document.getElementById('order-type');
+  if (!orderTypeSelect) return;
+  
+  const orderType = orderTypeSelect.value;
+  updateCurrencyDisplay(orderType);
+}
+
+// 更新货币显示
+function updateCurrencyDisplay(orderType) {
+  const exchangeRateInput = document.getElementById('exchange-rate');
+  const exchangeRateLabel = document.querySelector('label[for="exchange-rate"]');
+  const unitPriceLabel = document.querySelector('label[for="unit-price"]');
+  const totalPriceLabel = document.querySelector('label[for="total-price"]');
+  const unitPriceSymbol = document.querySelector('#unit-price').previousElementSibling;
+  const totalPriceSymbol = document.querySelector('#total-price').previousElementSibling;
+  
+  if (orderType === 'domestic') {
+    // 国内订单：汇率设为1，货币符号改为人民币
+    if (exchangeRateInput) {
+      exchangeRateInput.value = '1.0000';
+    }
+    
+    // 修改汇率标签
+    if (exchangeRateLabel) {
+      exchangeRateLabel.textContent = '汇率 (无汇率)';
+    }
+    
+    // 修改单价和总价的标签和符号
+    if (unitPriceLabel) {
+      unitPriceLabel.textContent = '单价 (CNY) *';
+    }
+    if (totalPriceLabel) {
+      totalPriceLabel.textContent = '总价 (CNY) *';
+    }
+    if (unitPriceSymbol && unitPriceSymbol.classList.contains('input-group-text')) {
+      unitPriceSymbol.textContent = '¥';
+    }
+    if (totalPriceSymbol && totalPriceSymbol.classList.contains('input-group-text')) {
+      totalPriceSymbol.textContent = '¥';
+    }
+  } else if (orderType === 'overseas') {
+    // 海外订单：汇率恢复默认值，货币符号改为美元
+    if (exchangeRateInput) {
+      exchangeRateInput.value = '7.1000';
+    }
+    
+    // 修改汇率标签
+    if (exchangeRateLabel) {
+      exchangeRateLabel.textContent = '汇率 (USD-CNY)';
+    }
+    
+    // 修改单价和总价的标签和符号
+    if (unitPriceLabel) {
+      unitPriceLabel.textContent = '单价 (USD) *';
+    }
+    if (totalPriceLabel) {
+      totalPriceLabel.textContent = '总价 (USD) *';
+    }
+    if (unitPriceSymbol && unitPriceSymbol.classList.contains('input-group-text')) {
+      unitPriceSymbol.textContent = '$';
+    }
+    if (totalPriceSymbol && totalPriceSymbol.classList.contains('input-group-text')) {
+      totalPriceSymbol.textContent = '$';
+    }
+  } else {
+    // 默认状态（海外订单）
+    if (exchangeRateInput) {
+      exchangeRateInput.value = '7.1000';
+    }
+    
+    // 修改汇率标签
+    if (exchangeRateLabel) {
+      exchangeRateLabel.textContent = '汇率 (USD-CNY)';
+    }
+    
+    if (unitPriceLabel) {
+      unitPriceLabel.textContent = '单价 (USD) *';
+    }
+    if (totalPriceLabel) {
+      totalPriceLabel.textContent = '总价 (USD) *';
+    }
+    if (unitPriceSymbol && unitPriceSymbol.classList.contains('input-group-text')) {
+      unitPriceSymbol.textContent = '$';
+    }
+    if (totalPriceSymbol && totalPriceSymbol.classList.contains('input-group-text')) {
+      totalPriceSymbol.textContent = '$';
+    }
+  }
+}
+
 // 显示新增销售记录模态框
 function showAddSalesModal() {
   // 重置表单
@@ -537,6 +638,11 @@ function showAddSalesModal() {
   if (calculateProfitBtn) {
     calculateProfitBtn.style.display = 'none';
   }
+  
+  // 设置默认的货币符号和汇率（默认为海外订单）
+  const orderTypeEl = document.getElementById('order-type');
+  const defaultOrderType = orderTypeEl ? orderTypeEl.value : 'overseas';
+  updateCurrencyDisplay(defaultOrderType);
   
   // 显示模态框
   const modal = new bootstrap.Modal(document.getElementById('sales-modal'));
@@ -619,6 +725,9 @@ async function showEditSalesModal(id) {
     if (orderTypeEl) {
       orderTypeEl.value = record.order_type || '';
       orderTypeEl.disabled = !isStageOne; // 只有阶段一可以修改
+      
+      // 根据订单类型设置货币符号和汇率
+      updateCurrencyDisplay(record.order_type);
     }
     if (orderSourceEl) {
       orderSourceEl.value = record.order_source || '';
@@ -850,7 +959,7 @@ async function handleSaveSales() {
           total_price: parseFloat(totalPriceEl.value),
           remarks: remarksEl ? remarksEl.value.trim() || null : null,
           exchange_rate: exchangeRateEl && exchangeRateEl.value ? parseFloat(exchangeRateEl.value) : null,
-          factory_price: factoryPriceEl && factoryPriceEl.value ? parseFloat(factoryPriceEl.value) : null,
+          factory_price: factoryPriceEl && factoryPriceEl.value ? parseFloat(factoryPriceEl.value) : 0,
           refund_amount: refundAmountEl && refundAmountEl.value ? parseFloat(refundAmountEl.value) : 0,
           tax_refund: taxRefundEl && taxRefundEl.value ? parseFloat(taxRefundEl.value) : 0,
           profit: profitEl && profitEl.value ? parseFloat(profitEl.value) : 0
@@ -1069,6 +1178,20 @@ async function showSalesDetails(id) {
     setElementText('detail-quantity', record.quantity);
     setElementText('detail-unit-price', parseFloat(record.unit_price).toFixed(2));
     setElementText('detail-total-price', parseFloat(record.total_price || 0).toFixed(2));
+    
+    // 根据订单类型设置货币符号
+    const unitPriceSymbol = document.getElementById('detail-unit-price-symbol');
+    const totalPriceSymbol = document.getElementById('detail-total-price-symbol');
+    
+    if (record.order_type === 'domestic') {
+      // 国内订单使用人民币符号
+      if (unitPriceSymbol) unitPriceSymbol.textContent = '¥';
+      if (totalPriceSymbol) totalPriceSymbol.textContent = '¥';
+    } else {
+      // 海外订单使用美元符号
+      if (unitPriceSymbol) unitPriceSymbol.textContent = '$';
+      if (totalPriceSymbol) totalPriceSymbol.textContent = '$';
+    }
     setElementText('detail-remarks', record.remarks || '-');
     
     // 设置订单类型

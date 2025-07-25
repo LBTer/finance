@@ -427,6 +427,11 @@ async def update_sales_record(
     
     logger.debug(f"准备更新的字段: {update_data}")
     
+    # 处理factory_price为None的情况，确保数据库约束不被违反
+    if 'factory_price' in update_data and update_data['factory_price'] is None:
+        logger.debug("factory_price为None，跳过更新该字段")
+        update_data.pop('factory_price')
+    
     try:
         for field, value in update_data.items():
             logger.debug(f"设置字段 {field}: {getattr(record, field, '未设置')} -> {value}")
