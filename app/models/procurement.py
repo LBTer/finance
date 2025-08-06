@@ -1,5 +1,5 @@
 from app.db.base_class import Base
-from sqlalchemy import Integer, Float, String, ForeignKey
+from sqlalchemy import Integer, Float, String, ForeignKey, Boolean
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 
@@ -29,4 +29,11 @@ class Procurement(Base):
     payment_method: Mapped[str] = mapped_column(String(100), nullable=False)
     # 备注
     remarks: Mapped[str] = mapped_column(String(1000), nullable=True)
+    
+    # 作废状态（独立于其他状态）
+    is_voided: Mapped[bool] = mapped_column(
+        default=False,
+        nullable=False,
+        server_default="false"
+    )
     

@@ -121,7 +121,8 @@ function renderProcurementTable(procurements) {
         'exhibition': '展会'
       };
       const prefix = sourcePrefix[record.order_source] || '未知';
-      return `#${prefix}-${record.id}`;
+      const voidedBadge = record.is_voided ? '<span class="badge bg-dark text-light me-2" style="font-size: 0.7em; padding: 0.4em 0.5em;">作废</span>' : '';
+      return `${voidedBadge}#${prefix}-${record.id}`;
     };
     
     const orderDisplay = procurement.sales_record ? 
@@ -231,4 +232,4 @@ function handleFilterSubmit(e) {
 }
 
 // 页面加载完成后初始化
-document.addEventListener('DOMContentLoaded', initProcurementPage); 
+document.addEventListener('DOMContentLoaded', initProcurementPage);

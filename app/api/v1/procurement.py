@@ -420,13 +420,14 @@ async def get_procurement_stats(
     """
     logger.info(f"获取采购统计信息 - user_id: {current_user.id}")
     
-    # 统计采购总数、总金额和总数量
+    # 统计采购总数、总金额和总数量（排除作废的采购）
     result = await db.execute(
         select(
             func.count(Procurement.id).label("total_count"),
             func.coalesce(func.sum(Procurement.amount), 0).label("total_amount"),
             func.coalesce(func.sum(Procurement.quantity), 0).label("total_quantity")
         )
+        .where(Procurement.is_voided == False)
     )
     stats = result.first()
     

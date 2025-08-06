@@ -418,12 +418,13 @@ async def get_shipping_fees_stats(
     """
     logger.info(f"获取运费统计信息 - user_id: {current_user.id}")
     
-    # 统计运费总数和总金额
+    # 统计运费总数和总金额（排除作废的运费）
     result = await db.execute(
         select(
             func.count(ShippingFees.id).label("total_count"),
             func.coalesce(func.sum(ShippingFees.shipping_fee), 0).label("total_amount")
         )
+        .where(ShippingFees.is_voided == False)
     )
     stats = result.first()
     

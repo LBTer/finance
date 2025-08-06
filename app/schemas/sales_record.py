@@ -98,6 +98,7 @@ class SalesRecordInDBBase(SalesRecordBase, TimestampSchema):
     id: int
     user_id: int
     stage: str
+    is_voided: bool = Field(default=False, description="是否已作废")
     logistics_approved_at: Optional[datetime] = None
     logistics_approved_by_id: Optional[int] = None
     final_approved_at: Optional[datetime] = None
@@ -118,7 +119,7 @@ class SalesRecordResponse(SalesRecordInDBBase):
     procurement: List["ProcurementResponse"] = []
 
     class Config:
-        from_attributes = True
+        from_attributes = True 
 
 # 解决前向引用问题
 def rebuild_models():
@@ -128,4 +129,4 @@ def rebuild_models():
         from .procurement import ProcurementResponse
         SalesRecordResponse.model_rebuild()
     except ImportError:
-        pass 
+        pass

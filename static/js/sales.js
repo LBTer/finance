@@ -242,30 +242,34 @@ function renderSalesTable(sales) {
     const canView = true; // 所有用户都可以查看
     
     // 修改权限：阶段一（创建者），阶段三（后勤职能），管理员/高级用户（所有）
-    const canModify = hasAdminRole || hasSeniorRole || 
+    // 作废状态下不允许修改任何信息
+    const canModify = !sale.is_voided && (hasAdminRole || hasSeniorRole || 
                      (sale.stage === 'stage_1' && isCreator && hasSalesFunction) ||
-                     (sale.stage === 'stage_3' && hasLogisticsFunction);
+                     (sale.stage === 'stage_3' && hasLogisticsFunction));
     
-    // 删除权限：只有阶段一且是创建者本人才能删除
-    const canDelete = (sale.stage === 'stage_1' && isCreator && hasSalesFunction);
+    // 删除权限：只有阶段一且是创建者本人才能删除，作废状态下不允许删除
+    const canDelete = !sale.is_voided && (sale.stage === 'stage_1' && isCreator && hasSalesFunction);
     
     // 提交权限：阶段一到阶段二（创建者），阶段三到阶段四（后勤职能）
-    // 注意：阶段二不能提交，只能审核通过后自动进入阶段三
-    const canSubmit = (hasAdminRole || hasSeniorRole) ? 
+    // 注意：阶段二不能提交，只能审核通过后自动进入阶段三，作废状态下不允许提交
+    const canSubmit = !sale.is_voided && ((hasAdminRole || hasSeniorRole) ? 
                      (sale.stage === 'stage_1' || sale.stage === 'stage_3') : 
                      ((sale.stage === 'stage_1' && isCreator && hasSalesFunction) ||
-                      (sale.stage === 'stage_3' && hasLogisticsFunction));
+                      (sale.stage === 'stage_3' && hasLogisticsFunction)));
     
-    // 审核权限：阶段二到阶段三（后勤职能），阶段四到阶段五（高级用户/管理员）
-    const canApprove = (sale.stage === 'stage_2' && hasLogisticsFunction) ||
-                      (sale.stage === 'stage_4' && (hasAdminRole || hasSeniorRole));
+    // 审核权限：阶段二到阶段三（后勤职能），阶段四到阶段五（高级用户/管理员），作废状态下不允许审核
+    const canApprove = !sale.is_voided && ((sale.stage === 'stage_2' && hasLogisticsFunction) ||
+                      (sale.stage === 'stage_4' && (hasAdminRole || hasSeniorRole)));
     
-    // 撤回权限：复杂的撤回逻辑
-    const canWithdraw = hasAdminRole || hasSeniorRole ||
+    // 撤回权限：复杂的撤回逻辑，作废状态下不允许撤回
+    const canWithdraw = !sale.is_voided && (hasAdminRole || hasSeniorRole ||
                        (sale.stage === 'stage_2' && isCreator && hasSalesFunction) ||
                        (sale.stage === 'stage_3' && hasLogisticsFunction) ||
                        (sale.stage === 'stage_4' && hasLogisticsFunction) ||
-                       (sale.stage === 'stage_5' && (hasAdminRole || hasSeniorRole));
+                       (sale.stage === 'stage_5' && (hasAdminRole || hasSeniorRole)));
+    
+    // 作废权限：管理员和高级用户可以作废/取消作废任何记录
+    const canVoid = hasAdminRole || hasSeniorRole;
     
     // 格式化日期时间
     const formatDateTime = (dateStr) => {
@@ -297,9 +301,12 @@ function renderSalesTable(sales) {
     // 根据订单类型确定货币符号
     const currencySymbol = sale.order_type === 'domestic' ? '¥' : '$';
     
+    // 订单号显示，如果作废则添加标识
+    const voidedBadge = sale.is_voided ? '<span class="badge bg-dark text-light me-2" style="font-size: 0.7em; padding: 0.4em 0.5em;">作废</span>' : '';
+    
     row.innerHTML = `
-      <td>#${prefix}-${sale.id || 'N/A'}</td>
-      <td>${sale.order_number || '-'}</td>
+      <td>${voidedBadge}#${prefix}-${sale.id || 'N/A'}</td>
+      <td style="word-break: break-all;">${sale.order_number || '-'}</td>
       <td>${sale.product_name || '-'}</td>
       <td>${sale.quantity || '0'}</td>
       <td>${currencySymbol}${sale.unit_price ? sale.unit_price.toFixed(2) : '0.00'}</td>
@@ -323,7 +330,7 @@ function renderSalesTable(sales) {
           ` : ''}
           
           <!-- 更多操作下拉菜单 -->
-          ${(canDelete || canSubmit || canApprove || canWithdraw) ? `
+          ${(canDelete || canSubmit || canApprove || canWithdraw || canVoid) ? `
             <div class="dropdown">
               <button class="btn btn-sm btn-secondary dropdown-toggle" type="button" data-bs-toggle="dropdown" aria-expanded="false" title="更多操作">
                 <i class="bi bi-three-dots"></i>
@@ -355,8 +362,17 @@ function renderSalesTable(sales) {
                   </li>
                 ` : ''}
                 
-                ${canDelete ? `
+                ${canVoid ? `
                   ${(canSubmit || canApprove || canWithdraw) ? '<li><hr class="dropdown-divider"></li>' : ''}
+                  <li>
+                    <a class="dropdown-item ${sale.is_voided ? 'text-success' : 'text-warning'}" href="#" onclick="${sale.is_voided ? 'confirmAndUnvoidRecord' : 'confirmAndVoidRecord'}('${sale.id}')">
+                      <i class="bi ${sale.is_voided ? 'bi-arrow-clockwise' : 'bi-x-circle'}"></i> ${sale.is_voided ? '取消作废' : '作废记录'}
+                    </a>
+                  </li>
+                ` : ''}
+                
+                ${canDelete ? `
+                  ${(canSubmit || canApprove || canWithdraw || canVoid) ? '<li><hr class="dropdown-divider"></li>' : ''}
                   <li>
                     <a class="dropdown-item text-danger" href="#" onclick="confirmAndDeleteRecord('${sale.id}')">
                       <i class="bi bi-trash"></i> 删除记录
@@ -368,7 +384,7 @@ function renderSalesTable(sales) {
           ` : ''}
           
           <!-- 状态提示 - 当用户无任何操作权限时显示 -->
-          ${!canModify && !canSubmit && !canApprove && !canWithdraw && !canDelete ? `
+          ${!canModify && !canSubmit && !canApprove && !canWithdraw && !canDelete && !canVoid ? `
             <span class="text-muted small">
               <i class="bi bi-lock"></i> 
               ${sale.stage === 'stage_2' ? '待审核' : 
@@ -701,7 +717,8 @@ async function showEditSalesModal(id) {
     // 根据阶段控制字段的可编辑性 - 按照需求文档重新设计
     const isStageOne = record.stage === 'stage_1';
     const isStageThree = record.stage === 'stage_3';
-    const canModify = isStageOne || isStageThree; // 只有阶段一、三可以修改
+    // 作废状态下不允许修改任何信息，与审核完成状态一致
+    const canModify = !record.is_voided && (isStageOne || isStageThree);
     
     // 订单号：始终置灰不可修改（系统自动生成格式：#来源-ID）
     if (orderIdEl) {
@@ -858,13 +875,16 @@ async function showEditSalesModal(id) {
       // 阶段一：创建者可以编辑销售附件
       // 阶段三：具有后勤职能的用户可以编辑后勤附件
       // 管理员/高级用户：可以在任何阶段编辑附件
+      // 作废状态下不允许编辑附件
       let canEditAttachments = false;
-      if (hasAdminRole || hasSeniorRole) {
-        canEditAttachments = true;
-      } else if (record.stage === 'stage_1' && record.user_id === currentUser.id && hasSalesFunction) {
-        canEditAttachments = true;
-      } else if (record.stage === 'stage_3' && hasLogisticsFunction) {
-        canEditAttachments = true;
+      if (!record.is_voided) {
+        if (hasAdminRole || hasSeniorRole) {
+          canEditAttachments = true;
+        } else if (record.stage === 'stage_1' && record.user_id === currentUser.id && hasSalesFunction) {
+          canEditAttachments = true;
+        } else if (record.stage === 'stage_3' && hasLogisticsFunction) {
+          canEditAttachments = true;
+        }
       }
       
       // 根据权限显示上传区域
@@ -885,8 +905,8 @@ async function showEditSalesModal(id) {
         // 直接使用已获取的运费和采购信息，避免额外的API请求
         displayShippingFees(record.shipping_fees || [], record.stage);
         displayProcurement(record.procurement || [], record.stage);
-        bindShippingFeesEvents(record.stage);
-        bindProcurementEvents(record.stage);
+        bindShippingFeesEvents(record.stage, record);
+        bindProcurementEvents(record.stage, record);
       }
     }, { once: true });
   } catch (error) {
@@ -1632,11 +1652,55 @@ async function confirmAndDeleteRecord(recordId) {
   }
 }
 
+// 确认并作废记录
+async function confirmAndVoidRecord(recordId) {
+  const confirmed = confirm('确定要作废这条销售记录吗？\n\n作废后记录将被标记为无效状态，但不会被删除。\n\n此操作可以通过"取消作废"功能恢复。');
+  
+  if (confirmed) {
+    try {
+      const response = await apiRequest(`/sales/${recordId}/void`, {
+        method: 'POST'
+      });
+      
+      if (response) {
+        showToast('success', '销售记录作废成功');
+        await loadSalesRecords();
+      }
+    } catch (error) {
+      console.error('作废销售记录失败:', error);
+      showToast('error', '作废失败，请重试');
+    }
+  }
+}
+
+// 确认并取消作废记录
+async function confirmAndUnvoidRecord(recordId) {
+  const confirmed = confirm('确定要取消作废这条销售记录吗？\n\n记录将恢复为正常状态，可以继续进行相关操作。');
+  
+  if (confirmed) {
+    try {
+      const response = await apiRequest(`/sales/${recordId}/unvoid`, {
+        method: 'POST'
+      });
+      
+      if (response) {
+        showToast('success', '销售记录取消作废成功');
+        await loadSalesRecords();
+      }
+    } catch (error) {
+      console.error('取消作废销售记录失败:', error);
+      showToast('error', '取消作废失败，请重试');
+    }
+  }
+}
+
 // 暴露新的确认函数给全局
 window.confirmAndSubmitRecord = confirmAndSubmitRecord;
 window.confirmAndApproveRecord = confirmAndApproveRecord;
 window.confirmAndWithdrawRecord = confirmAndWithdrawRecord;
 window.confirmAndDeleteRecord = confirmAndDeleteRecord;
+window.confirmAndVoidRecord = confirmAndVoidRecord;
+window.confirmAndUnvoidRecord = confirmAndUnvoidRecord;
 
 // ======================== 详情页面运费和采购记录显示（只读） ========================
 
@@ -1817,9 +1881,9 @@ function getLogisticsTypeName(type) {
 }
 
 // 绑定运费相关事件
-function bindShippingFeesEvents(stage = null) {
-  // 判断是否可以编辑（只有阶段三可以编辑）
-  const canEdit = stage === 'stage_3';
+function bindShippingFeesEvents(stage = null, record = null) {
+  // 判断是否可以编辑（只有阶段三可以编辑，且未被作废）
+  const canEdit = stage === 'stage_3' && (!record || !record.is_voided);
   
   // 切换添加运费表单
   const toggleBtn = document.getElementById('toggle-shipping-form');
@@ -2091,9 +2155,9 @@ function displayProcurement(procurement, stage = null) {
 }
 
 // 绑定采购相关事件
-function bindProcurementEvents(stage = null) {
-  // 判断是否可以编辑（只有阶段三可以编辑）
-  const canEdit = stage === 'stage_3';
+function bindProcurementEvents(stage = null, record = null) {
+  // 判断是否可以编辑（只有阶段三可以编辑，且未被作废）
+  const canEdit = stage === 'stage_3' && (!record || !record.is_voided);
   
   // 切换添加采购表单
   const toggleBtn = document.getElementById('toggle-procurement-form');

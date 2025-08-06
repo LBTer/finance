@@ -1,8 +1,34 @@
-# 使用Python 3.12官方镜像
-FROM python:3.12-slim
+# 使用Python 3.11官方镜像
+FROM python:3.11.8-slim
 
 # 设置工作目录
 WORKDIR /app
+
+# # 1. 修复系统时间问题（最关键步骤）
+# RUN ln -sf /usr/share/zoneinfo/Asia/Shanghai /etc/localtime && \
+#     echo "Asia/Shanghai" > /etc/timezone && \
+#     # 安装ntpdate确保时间准确
+#     apt-get update && \
+#     DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
+#         ca-certificates \
+#         tzdata \
+#         ntpdate && \
+#     # 同步系统时间
+#     ntpdate -s time.nist.gov || ntpdate -s ntp.ubuntu.com || true && \
+#     # 清理
+#     apt-get clean && \
+#     rm -rf /var/lib/apt/lists/*
+
+# 适配新版本 Debian 的 DEB822 格式源配置
+# 替换为国内镜像源（避免清华限制，改用阿里云）
+RUN if [ -f /etc/apt/sources.list ]; then \
+        sed -i 's|http://deb.debian.org|https://mirrors.aliyun.com|g' /etc/apt/sources.list && \
+        sed -i 's|http://security.debian.org|https://mirrors.aliyun.com|g' /etc/apt/sources.list; \
+    fi && \
+    if [ -f /etc/apt/sources.list.d/debian.sources ]; then \
+        sed -i 's|http://deb.debian.org|https://mirrors.aliyun.com|g' /etc/apt/sources.list.d/debian.sources && \
+        sed -i 's|http://security.debian.org|https://mirrors.aliyun.com|g' /etc/apt/sources.list.d/debian.sources; \
+    fi
 
 # 安装系统依赖（构建psycopg2所需）
 RUN apt-get update && apt-get install -y \
@@ -24,10 +50,15 @@ COPY . .
 RUN sed -i 's/localhost:15432/postgres:5432/g' alembic.ini
 
 # 创建虚拟环境并安装依赖
-RUN uv venv 
+# RUN uv venv /app/.venv && \
+#     . /app/.venv/bin/activate && \
+#     uv pip install --upgrade pip setuptools wheel && \
+#     uv pip install psycopg2-binary && \
+#     uv pip install -e .
+# 创建虚拟环境并安装依赖
 RUN uv venv /app/.venv && \
     . /app/.venv/bin/activate && \
-    uv pip install -e .
+    uv pip install -i https://mirrors.aliyun.com/pypi/simple/ --trusted-host mirrors.aliyun.com -e .
 
 # 创建启动脚本
 RUN echo '#!/bin/bash\n\
@@ -48,5 +79,6 @@ EXPOSE 8000
 ENV PYTHONPATH=/app
 ENV PATH="/app/.venv/bin:$PATH"
 
-# 启动命令
-CMD ["/app/start.sh"] 
+# 启动命令，不需要启动服务，等待即可
+CMD ["/app/start.sh"]
+# CMD ["tail", "-f", "/dev/null"]

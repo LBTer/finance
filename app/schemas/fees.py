@@ -51,6 +51,7 @@ class ShippingFeesInDBBase(ShippingFeesBase, TimestampSchema):
     """数据库中的运费Schema基类"""
     id: int
     sales_record_id: int
+    is_voided: bool = Field(default=False, description="是否已作废")
 
 class ShippingFeesInDB(ShippingFeesInDBBase):
     """数据库中的运费Schema"""
@@ -62,6 +63,7 @@ class SalesRecordSimple(BaseSchema):
     id: int
     order_number: str
     order_source: str
+    is_voided: bool = Field(default=False, description="是否已作废")
     
     class Config:
         from_attributes = True
@@ -71,4 +73,4 @@ class ShippingFeesResponse(ShippingFeesInDBBase):
     sales_record: SalesRecordSimple
 
     class Config:
-        from_attributes = True 
+        from_attributes = True

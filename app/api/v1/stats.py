@@ -38,11 +38,8 @@ async def get_dashboard_stats(
     else:
         next_month = datetime(now.year, now.month + 1, 1, tzinfo=timezone.utc)
     
-    # 基础查询条件
-    base_query = select(func.count(SalesRecord.id))
-    if not current_user.is_superuser and current_user.role != UserRole.ADMIN.value:
-        # 非超级管理员/高级用户只能看到自己的销售记录
-        base_query = base_query.where(SalesRecord.user_id == current_user.id)
+    # 基础查询条件（排除作废记录）
+    base_query = select(func.count(SalesRecord.id)).where(SalesRecord.is_voided == False)
     
     # 1. 获取各阶段订单数量
     stage_counts = {}
@@ -62,13 +59,14 @@ async def get_dashboard_stats(
     total_orders_result = await db.execute(base_query)
     total_orders = total_orders_result.scalar() or 0
     
-    # 4. 计算本月销售总额（仅最终阶段订单）
+    # 4. 计算本月销售总额（仅最终阶段订单，排除作废记录）
     monthly_sales_query = select(
         func.sum(SalesRecord.total_price).label("total_sales")
     ).where(
         SalesRecord.created_at >= first_day,
         SalesRecord.created_at < next_month,
-        SalesRecord.stage == OrderStage.STAGE_5.value
+        SalesRecord.stage == OrderStage.STAGE_5.value,
+        SalesRecord.is_voided == False
     )
     
     if not current_user.is_superuser:
@@ -97,4 +95,4 @@ async def get_dashboard_stats(
         pending_logistics_review=pending_logistics_review,
         pending_final_review=pending_final_review,
         completed_orders=completed_orders
-    ) 
+    )

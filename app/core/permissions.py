@@ -18,6 +18,8 @@ class Action(str, Enum):
     APPROVE = "approve"
     SUBMIT = "submit"
     WITHDRAW = "withdraw"
+    VOID = "void"
+    UNVOID = "unvoid"
     MANAGE_SALES_ATTACHMENT = "manage_sales_attachment"
     MANAGE_LOGISTICS_ATTACHMENT = "manage_logistics_attachment"
 
@@ -79,6 +81,12 @@ class SalesRecordPermission(BasePermission):
         
         if action == Action.WITHDRAW:
             return await self._can_withdraw_record(obj)
+        
+        if action == Action.VOID:
+            return await self._can_void_record(obj)
+        
+        if action == Action.UNVOID:
+            return await self._can_unvoid_record(obj)
         
         if action == Action.MANAGE_SALES_ATTACHMENT:
             return await self._can_manage_sales_attachment(obj)
@@ -190,6 +198,20 @@ class SalesRecordPermission(BasePermission):
             return self.user.has_logistics_function()
         
         return False
+    
+    async def _can_void_record(self, obj: SalesRecord) -> bool:
+        """检查是否可以作废销售记录"""
+        # 只有高级用户和超级管理员可以作废记录
+        return (self.user.is_superuser or 
+                self.user.role == UserRole.ADMIN.value or 
+                self.user.role == UserRole.SENIOR.value)
+    
+    async def _can_unvoid_record(self, obj: SalesRecord) -> bool:
+        """检查是否可以取消作废销售记录"""
+        # 只有高级用户和超级管理员可以取消作废记录
+        return (self.user.is_superuser or 
+                self.user.role == UserRole.ADMIN.value or 
+                self.user.role == UserRole.SENIOR.value)
 
 def check_permissions(
     permission_class: Type[BasePermission],
@@ -259,4 +281,4 @@ async def get_sales_record(db, record_id: int, **kwargs) -> Optional[SalesRecord
     result = await db.execute(
         select(SalesRecord).where(SalesRecord.id == record_id)
     )
-    return result.scalar_one_or_none() 
+    return result.scalar_one_or_none()

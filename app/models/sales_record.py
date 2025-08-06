@@ -1,6 +1,6 @@
 from datetime import datetime
 from typing import Optional, List
-from sqlalchemy import String, Integer, Float, ForeignKey, DateTime
+from sqlalchemy import String, Integer, Float, ForeignKey, DateTime, Boolean
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from app.db.base_class import Base
 import enum
@@ -97,6 +97,13 @@ class SalesRecord(Base):
         String(20),
         default=OrderStage.STAGE_1.value,
         nullable=False
+    )
+    
+    # 作废状态（独立于其他状态）
+    is_voided: Mapped[bool] = mapped_column(
+        default=False,
+        nullable=False,
+        server_default="false"
     )
     
     # 备注

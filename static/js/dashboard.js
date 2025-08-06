@@ -219,7 +219,10 @@ function renderRecentOrdersTable(orders) {
       'exhibition': '展会'
     };
     const prefix = sourcePrefix[order.order_source] || '未知';
-    const displayOrderNumber = `#${prefix}-${order.id}`;
+    
+    // 作废标识
+    const voidedBadge = order.is_voided ? '<span class="badge bg-dark text-light me-2" style="font-size: 0.7em; padding: 0.4em 0.5em;">作废</span>' : '';
+    const displayOrderNumber = `${voidedBadge}#${prefix}-${order.id}`;
     
     // 阶段显示样式和文本
     const stageClass = {
@@ -267,10 +270,10 @@ function formatCurrency(amount, currency = '¥') {
       currency: 'USD'
     }).format(amount);
   } else {
-    return new Intl.NumberFormat('zh-CN', {
-      style: 'currency',
-      currency: 'CNY'
-    }).format(amount);
+  return new Intl.NumberFormat('zh-CN', {
+    style: 'currency',
+    currency: 'CNY'
+  }).format(amount);
   }
 }
 
@@ -291,4 +294,4 @@ function formatDateTime(dateString) {
 document.addEventListener('DOMContentLoaded', initDashboard);
 
 // 暴露给全局的函数
-window.showOrderDetails = showOrderDetails; 
+window.showOrderDetails = showOrderDetails;

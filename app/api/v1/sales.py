@@ -11,6 +11,8 @@ from app.models.user import User, UserRole
 from app.models.sales_record import OrderSource, SalesRecord, OrderStage, OrderType
 from app.models.attachment import Attachment, AttachmentType
 from app.models.audit_log import AuditAction, AuditResourceType
+from app.models.fees import ShippingFees
+from app.models.procurement import Procurement
 from app.schemas.sales_record import (
     SalesRecordCreate,
     SalesRecordUpdate,
@@ -987,3 +989,226 @@ async def withdraw_sales_record(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"撤回记录失败: {str(e)}"
         )
+
+@router.post("/{record_id}/void", response_model=SalesRecordResponse)
+@check_sales_record_permissions(Action.VOID, get_sales_record)
+async def void_sales_record(
+    record_id: int,
+    db: AsyncSessionDep,
+    current_user: Annotated[User, Depends(get_current_user)],
+    request: Request
+) -> SalesRecord:
+    """
+    作废销售记录
+    
+    - **record_id**: 销售记录ID
+    
+    作废后的记录将被标记为作废状态，但不会被删除
+    """
+    logger.info(f"作废销售记录 - record_id: {record_id}, user_id: {current_user.id}")
+    
+    # 获取销售记录
+    result = await db.execute(
+        select(SalesRecord)
+        .options(
+            joinedload(SalesRecord.user),
+            joinedload(SalesRecord.logistics_approved_by),
+            joinedload(SalesRecord.final_approved_by),
+            joinedload(SalesRecord.attachments),
+            joinedload(SalesRecord.shipping_fees),
+            joinedload(SalesRecord.procurement)
+        )
+        .where(SalesRecord.id == record_id)
+    )
+    record = result.unique().scalar_one_or_none()
+    
+    if not record:
+        logger.warning(f"销售记录不存在 - record_id: {record_id}")
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="销售记录不存在"
+        )
+    
+    # 检查是否已经作废
+    if hasattr(record, 'is_voided') and record.is_voided:
+        logger.warning(f"销售记录已经作废 - record_id: {record_id}")
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="销售记录已经作废"
+        )
+    
+    # 设置作废状态
+    if hasattr(record, 'is_voided'):
+        record.is_voided = True
+    record.updated_at = datetime.now(UTC)
+    
+    # 同时作废关联的运费记录
+    if record.shipping_fees:
+        for shipping_fee in record.shipping_fees:
+            shipping_fee.is_voided = True
+            shipping_fee.updated_at = datetime.now(UTC)
+    
+    # 同时作废关联的采购记录
+    if record.procurement:
+        for procurement in record.procurement:
+            procurement.is_voided = True
+            procurement.updated_at = datetime.now(UTC)
+    
+    await db.commit()
+    await db.refresh(record)
+    
+    # 重新查询以获取完整的关联数据
+    result = await db.execute(
+        select(SalesRecord)
+        .options(
+            joinedload(SalesRecord.user),
+            joinedload(SalesRecord.logistics_approved_by),
+            joinedload(SalesRecord.final_approved_by),
+            joinedload(SalesRecord.attachments),
+            joinedload(SalesRecord.shipping_fees),
+            joinedload(SalesRecord.procurement)
+        )
+        .where(SalesRecord.id == record_id)
+    )
+    final_record = result.unique().scalar_one()
+    
+    # 记录审计日志
+    try:
+        # 统计关联记录数量
+        shipping_fees_count = len(final_record.shipping_fees) if final_record.shipping_fees else 0
+        procurement_count = len(final_record.procurement) if final_record.procurement else 0
+        
+        await AuditService.log_action(
+            db=db,
+            user_id=current_user.id,
+            action=AuditAction.UPDATE,
+            resource_type=AuditResourceType.SALES_RECORD,
+            resource_id=record_id,
+            description="作废销售记录及关联记录",
+            details={
+                "record_id": record_id,
+                "order_number": final_record.order_number,
+                "action": "void",
+                "previous_voided_status": False,
+                "new_voided_status": True,
+                "affected_shipping_fees": shipping_fees_count,
+                "affected_procurement": procurement_count
+            },
+            request=request
+        )
+    except Exception as audit_error:
+        logger.warning(f"记录审计日志失败: {audit_error}")
+    
+    logger.info(f"销售记录及关联记录作废成功 - record_id: {record_id}, 运费记录: {len(final_record.shipping_fees) if final_record.shipping_fees else 0}条, 采购记录: {len(final_record.procurement) if final_record.procurement else 0}条")
+    return final_record
+
+@router.post("/{record_id}/unvoid", response_model=SalesRecordResponse)
+@check_sales_record_permissions(Action.UNVOID, get_sales_record)
+async def unvoid_sales_record(
+    record_id: int,
+    db: AsyncSessionDep,
+    current_user: Annotated[User, Depends(get_current_user)],
+    request: Request
+) -> SalesRecord:
+    """
+    取消作废销售记录
+    
+    - **record_id**: 销售记录ID
+    
+    取消作废后的记录将恢复正常状态
+    """
+    logger.info(f"取消作废销售记录 - record_id: {record_id}, user_id: {current_user.id}")
+    
+    # 获取销售记录
+    result = await db.execute(
+        select(SalesRecord)
+        .options(
+            joinedload(SalesRecord.user),
+            joinedload(SalesRecord.logistics_approved_by),
+            joinedload(SalesRecord.final_approved_by),
+            joinedload(SalesRecord.attachments),
+            joinedload(SalesRecord.shipping_fees),
+            joinedload(SalesRecord.procurement)
+        )
+        .where(SalesRecord.id == record_id)
+    )
+    record = result.unique().scalar_one_or_none()
+    
+    if not record:
+        logger.warning(f"销售记录不存在 - record_id: {record_id}")
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="销售记录不存在"
+        )
+    
+    # 检查是否已经取消作废
+    if not hasattr(record, 'is_voided') or not record.is_voided:
+        logger.warning(f"销售记录未作废，无需取消 - record_id: {record_id}")
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="销售记录未作废，无需取消"
+        )
+    
+    # 取消作废状态
+    record.is_voided = False
+    record.updated_at = datetime.now(UTC)
+    
+    # 同时取消作废关联的运费记录
+    if record.shipping_fees:
+        for shipping_fee in record.shipping_fees:
+            shipping_fee.is_voided = False
+            shipping_fee.updated_at = datetime.now(UTC)
+    
+    # 同时取消作废关联的采购记录
+    if record.procurement:
+        for procurement in record.procurement:
+            procurement.is_voided = False
+            procurement.updated_at = datetime.now(UTC)
+    
+    await db.commit()
+    await db.refresh(record)
+    
+    # 重新查询以获取完整的关联数据
+    result = await db.execute(
+        select(SalesRecord)
+        .options(
+            joinedload(SalesRecord.user),
+            joinedload(SalesRecord.logistics_approved_by),
+            joinedload(SalesRecord.final_approved_by),
+            joinedload(SalesRecord.attachments),
+            joinedload(SalesRecord.shipping_fees),
+            joinedload(SalesRecord.procurement)
+        )
+        .where(SalesRecord.id == record_id)
+    )
+    final_record = result.unique().scalar_one()
+    
+    # 记录审计日志
+    try:
+        # 统计关联记录数量
+        shipping_fees_count = len(final_record.shipping_fees) if final_record.shipping_fees else 0
+        procurement_count = len(final_record.procurement) if final_record.procurement else 0
+        
+        await AuditService.log_action(
+            db=db,
+            user_id=current_user.id,
+            action=AuditAction.UPDATE,
+            resource_type=AuditResourceType.SALES_RECORD,
+            resource_id=record_id,
+            description="取消作废销售记录及关联记录",
+            details={
+                "record_id": record_id,
+                "order_number": final_record.order_number,
+                "action": "unvoid",
+                "previous_voided_status": True,
+                "new_voided_status": False,
+                "affected_shipping_fees": shipping_fees_count,
+                "affected_procurement": procurement_count
+            },
+            request=request
+        )
+    except Exception as audit_error:
+        logger.warning(f"记录审计日志失败: {audit_error}")
+    
+    logger.info(f"销售记录及关联记录取消作废成功 - record_id: {record_id}, 运费记录: {len(final_record.shipping_fees) if final_record.shipping_fees else 0}条, 采购记录: {len(final_record.procurement) if final_record.procurement else 0}条")
+    return final_record
